@@ -1,13 +1,29 @@
-# libdeflate rust x
+# libdeflate-rs
 
 A complete Rust port of libdeflate, without C code.
 
-**libdeflate-rsx is currently available, but is still undergoing internal integrity testing.**
+**libdeflate-rs is currently available, but is still undergoing internal integrity testing.**
 
 ## Feature
 - Includes streaming processing API
 - Includes batch processing API
-- Performance is almost identical to libdeflate.
+- A highly optimized implementation, faster than C binding
+- Supports concurrent compression for fast processing of large amounts of data.
+
+## Bug
+- Poor performance in compression/S-level data processing
+- The performance of decompressing/S-level data and subsequent levels is poor
+
+## Import
+**I'm still fixing a bug that caused the performance degradation, so I can't import it for now.**
+
+```toml
+[dependencies]
+libdeflate = "0.1.0"
+```
+
+## Examples
+See [examples](examples)
 
 ## SIMD
 Currently, the instruction set support is the same as libdeflate.
