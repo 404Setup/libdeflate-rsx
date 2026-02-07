@@ -1,0 +1,10 @@
+/build*
+/libdeflate-*-windows-*
+/libdeflate-*.tar.gz
+cscope*
+tags
+target
+.idea
+bench_data
+bench_data.zip
+.output.txt

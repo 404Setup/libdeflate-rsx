@@ -1,0 +1,31 @@
+[package]
+name = "libdeflate"
+version = "1.25.0"
+edition = "2024"
+authors = ["404"]
+description = "Rust rewrite of libdeflate"
+license = "BSD-3"
+
+[dependencies]
+rayon = "1.11.0"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+
+[profile.dev]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bench]]
+name = "bench_main"
+harness = false
+
+[dev-dependencies]
+criterion = "0.5"
+libdeflater = "1.25.0"

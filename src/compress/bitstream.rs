@@ -1,0 +1,77 @@
+pub struct Bitstream<'a> {
+    pub output: &'a mut [u8],
+    pub out_idx: usize,
+    pub bitbuf: u64,
+    pub bitcount: u32,
+}
+
+impl<'a> Bitstream<'a> {
+    pub fn new(output: &'a mut [u8]) -> Self {
+        Self {
+            output,
+            out_idx: 0,
+            bitbuf: 0,
+            bitcount: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn write_bits(&mut self, bits: u32, count: u32) -> bool {
+        if count == 0 {
+            return true;
+        }
+        let mask = if count == 32 {
+            0xFFFFFFFF
+        } else {
+            (1u32 << count) - 1
+        };
+        
+        self.bitbuf |= ((bits & mask) as u64) << self.bitcount;
+        self.bitcount += count;
+
+        if self.bitcount >= 32 {
+            if self.out_idx + 8 <= self.output.len() {
+                unsafe {
+                    std::ptr::write_unaligned(
+                        self.output.as_mut_ptr().add(self.out_idx) as *mut u64, 
+                        self.bitbuf.to_le()
+                    );
+                }
+                let bytes_written = (self.bitcount >> 3) as usize;
+                self.out_idx += bytes_written;
+                self.bitbuf >>= bytes_written * 8;
+                self.bitcount &= 7;
+                return true;
+            }
+        }
+
+        while self.bitcount >= 8 {
+            if self.out_idx >= self.output.len() {
+                return false;
+            }
+            unsafe {
+                *self.output.get_unchecked_mut(self.out_idx) = (self.bitbuf & 0xFF) as u8;
+            }
+            self.out_idx += 1;
+            self.bitbuf >>= 8;
+            self.bitcount -= 8;
+        }
+        true
+    }
+
+    pub fn flush(&mut self) -> (bool, u32) {
+        let mut valid_bits = 0;
+        if self.bitcount > 0 {
+            if self.out_idx >= self.output.len() {
+                return (false, 0);
+            }
+
+            self.output[self.out_idx] = (self.bitbuf & 0xFF) as u8;
+            self.out_idx += 1;
+            valid_bits = self.bitcount;
+            self.bitbuf = 0;
+            self.bitcount = 0;
+        }
+        (true, valid_bits)
+    }
+}

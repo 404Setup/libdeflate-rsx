@@ -9,16 +9,6 @@ A complete Rust port of libdeflate, without C code.
 - Includes batch processing API
 - Performance is almost identical to libdeflate.
 
-## Todo
-- Add example
-- Add decompression capability to the stream processing API.
-- Optimize stream processing API performance
-- Optimize peak latency
-- Add asynchronous processing interface
-- Optimize batch processing API performance
-- Force asynchronous batch processing API
-- Better SIMD instructions
-
 ## SIMD
 Currently, the instruction set support is the same as libdeflate.
 
