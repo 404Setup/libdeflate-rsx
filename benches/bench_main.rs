@@ -160,7 +160,7 @@ fn bench_stream(c: &mut Criterion) {
     let data = read_file(path);
     let size = data.len();
 
-    let mut group = c.benchmark_group("Stream Compression");
+    let mut group = c.benchmark_group("Stream Processing");
     group.throughput(Throughput::Bytes(size as u64));
 
     group.bench_with_input("DeflateEncoder", &size, |b, &_size| {
@@ -169,6 +169,21 @@ fn bench_stream(c: &mut Criterion) {
             let mut encoder = stream::DeflateEncoder::new(sink, 6).with_buffer_size(64 * 1024);
             encoder.write_all(&data).unwrap();
             encoder.finish().unwrap();
+        });
+    });
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor.compress_deflate_into(&data, &mut compressed_data).unwrap();
+    let compressed_slice = &compressed_data[..compressed_size];
+
+    group.bench_with_input("DeflateDecoder", &size, |b, &_size| {
+        b.iter(|| {
+            let mut decoder = stream::DeflateDecoder::new(compressed_slice);
+            let mut buf = vec![0u8; 64 * 1024];
+            while let Ok(n) = decoder.read(&mut buf) {
+                if n == 0 { break; }
+            }
         });
     });
 
