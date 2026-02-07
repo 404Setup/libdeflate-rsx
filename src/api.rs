@@ -121,7 +121,7 @@ impl Decompressor {
         unsafe {
             output.set_len(expected_size);
         }
-        
+
         let (res, _, size) = self.inner.decompress(data, &mut output);
 
         if res == crate::decompress::DecompressResult::Success {
@@ -152,7 +152,7 @@ impl Decompressor {
         unsafe {
             output.set_len(expected_size);
         }
-        
+
         let (res, _, size) = self.inner.decompress_zlib(data, &mut output);
 
         if res == crate::decompress::DecompressResult::Success {
@@ -183,7 +183,7 @@ impl Decompressor {
         unsafe {
             output.set_len(expected_size);
         }
-        
+
         let (res, _, size) = self.inner.decompress_gzip(data, &mut output);
 
         if res == crate::decompress::DecompressResult::Success {
