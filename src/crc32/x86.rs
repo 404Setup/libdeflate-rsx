@@ -15,6 +15,7 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     }
 
     let mults_128b = _mm_set_epi64x(CRC32_X95_MODG as i64, CRC32_X159_MODG as i64);
+    let mults_512b = _mm_set_epi64x(CRC32_X479_MODG as i64, CRC32_X543_MODG as i64);
     let barrett_reduction_constants = _mm_set_epi64x(
         CRC32_BARRETT_CONSTANT_2 as i64,
         CRC32_BARRETT_CONSTANT_1 as i64,
@@ -22,10 +23,63 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
 
     let mut x0 = _mm_cvtsi32_si128(crc as i32);
 
-    let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-    x0 = _mm_xor_si128(x0, v0);
-    data = &data[16..];
-    len -= 16;
+    if len >= 64 {
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+        let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+        let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+
+        x0 = _mm_xor_si128(x0, v0);
+        let mut x1 = v1;
+        let mut x2 = v2;
+        let mut x3 = v3;
+
+        data = &data[64..];
+        len -= 64;
+
+        while len >= 64 {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+            let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+            let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+
+            let x0_low = _mm_clmulepi64_si128(x0, mults_512b, 0x00);
+            let x0_high = _mm_clmulepi64_si128(x0, mults_512b, 0x11);
+            x0 = _mm_xor_si128(v0, _mm_xor_si128(x0_low, x0_high));
+
+            let x1_low = _mm_clmulepi64_si128(x1, mults_512b, 0x00);
+            let x1_high = _mm_clmulepi64_si128(x1, mults_512b, 0x11);
+            x1 = _mm_xor_si128(v1, _mm_xor_si128(x1_low, x1_high));
+
+            let x2_low = _mm_clmulepi64_si128(x2, mults_512b, 0x00);
+            let x2_high = _mm_clmulepi64_si128(x2, mults_512b, 0x11);
+            x2 = _mm_xor_si128(v2, _mm_xor_si128(x2_low, x2_high));
+
+            let x3_low = _mm_clmulepi64_si128(x3, mults_512b, 0x00);
+            let x3_high = _mm_clmulepi64_si128(x3, mults_512b, 0x11);
+            x3 = _mm_xor_si128(v3, _mm_xor_si128(x3_low, x3_high));
+
+            data = &data[64..];
+            len -= 64;
+        }
+
+        let x0_low = _mm_clmulepi64_si128(x0, mults_128b, 0x00);
+        let x0_high = _mm_clmulepi64_si128(x0, mults_128b, 0x11);
+        x0 = _mm_xor_si128(x1, _mm_xor_si128(x0_low, x0_high));
+
+        let x0_low = _mm_clmulepi64_si128(x0, mults_128b, 0x00);
+        let x0_high = _mm_clmulepi64_si128(x0, mults_128b, 0x11);
+        x0 = _mm_xor_si128(x2, _mm_xor_si128(x0_low, x0_high));
+
+        let x0_low = _mm_clmulepi64_si128(x0, mults_128b, 0x00);
+        let x0_high = _mm_clmulepi64_si128(x0, mults_128b, 0x11);
+        x0 = _mm_xor_si128(x3, _mm_xor_si128(x0_low, x0_high));
+    } else {
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        x0 = _mm_xor_si128(x0, v0);
+        data = &data[16..];
+        len -= 16;
+    }
 
     while len >= 16 {
         let v_data = _mm_loadu_si128(data.as_ptr() as *const __m128i);

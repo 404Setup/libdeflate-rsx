@@ -460,8 +460,15 @@ impl Decompressor {
                      let b = *out_ptr.add(src);
                      std::ptr::write_bytes(out_ptr.add(dest), b, length);
                  } else {
-                     for i in 0..length {
-                         *out_ptr.add(dest + i) = *out_ptr.add(src + i);
+                     let mut copied = 0;
+                     while copied < length {
+                         let copy_len = std::cmp::min(offset, length - copied);
+                         std::ptr::copy_nonoverlapping(
+                             out_ptr.add(src + copied),
+                             out_ptr.add(dest + copied),
+                             copy_len,
+                         );
+                         copied += copy_len;
                      }
                  }
              }
@@ -556,8 +563,15 @@ impl Decompressor {
                         let b = *out_ptr.add(src);
                         std::ptr::write_bytes(out_ptr.add(dest), b, length);
                     } else {
-                        for i in 0..length {
-                            *out_ptr.add(dest + i) = *out_ptr.add(src + i);
+                        let mut copied = 0;
+                        while copied < length {
+                            let copy_len = std::cmp::min(offset, length - copied);
+                            std::ptr::copy_nonoverlapping(
+                                out_ptr.add(src + copied),
+                                out_ptr.add(dest + copied),
+                                copy_len,
+                            );
+                            copied += copy_len;
                         }
                     }
                 }

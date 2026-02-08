@@ -93,8 +93,19 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let mut s2 = adler >> 16;
     let mut data = p;
 
+    let mults_a = _mm256_set_epi16(
+        41, 42, 43, 44, 45, 46, 47, 48, 57, 58, 59, 60, 61, 62, 63, 64,
+    );
+    let mults_b = _mm256_set_epi16(
+        33, 34, 35, 36, 37, 38, 39, 40, 49, 50, 51, 52, 53, 54, 55, 56,
+    );
+    let mults_c = _mm256_set_epi16(
+        9, 10, 11, 12, 13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32,
+    );
+    let mults_d = _mm256_set_epi16(1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21, 22, 23, 24);
+
     while data.len() >= 64 {
-        let mut n = std::cmp::min(data.len(), 4096);
+        let mut n = std::cmp::min(data.len(), 5552);
         n &= !63;
 
         s2 += s1 * (n as u32);
@@ -109,6 +120,47 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let v_zero = _mm256_setzero_si256();
 
         let mut chunk_n = n;
+        while chunk_n >= 128 {
+            let data_a_1 = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
+            let data_b_1 = _mm256_loadu_si256(data.as_ptr().add(32) as *const __m256i);
+            let data_a_2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const __m256i);
+            let data_b_2 = _mm256_loadu_si256(data.as_ptr().add(96) as *const __m256i);
+
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
+
+            v_byte_sums_a = _mm256_add_epi16(v_byte_sums_a, _mm256_unpacklo_epi8(data_a_1, v_zero));
+            v_byte_sums_b = _mm256_add_epi16(v_byte_sums_b, _mm256_unpackhi_epi8(data_a_1, v_zero));
+            v_byte_sums_c = _mm256_add_epi16(v_byte_sums_c, _mm256_unpacklo_epi8(data_b_1, v_zero));
+            v_byte_sums_d = _mm256_add_epi16(v_byte_sums_d, _mm256_unpackhi_epi8(data_b_1, v_zero));
+
+            v_s1 = _mm256_add_epi32(
+                v_s1,
+                _mm256_add_epi32(
+                    _mm256_sad_epu8(data_a_1, v_zero),
+                    _mm256_sad_epu8(data_b_1, v_zero),
+                ),
+            );
+
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
+
+            v_byte_sums_a = _mm256_add_epi16(v_byte_sums_a, _mm256_unpacklo_epi8(data_a_2, v_zero));
+            v_byte_sums_b = _mm256_add_epi16(v_byte_sums_b, _mm256_unpackhi_epi8(data_a_2, v_zero));
+            v_byte_sums_c = _mm256_add_epi16(v_byte_sums_c, _mm256_unpacklo_epi8(data_b_2, v_zero));
+            v_byte_sums_d = _mm256_add_epi16(v_byte_sums_d, _mm256_unpackhi_epi8(data_b_2, v_zero));
+
+            v_s1 = _mm256_add_epi32(
+                v_s1,
+                _mm256_add_epi32(
+                    _mm256_sad_epu8(data_a_2, v_zero),
+                    _mm256_sad_epu8(data_b_2, v_zero),
+                ),
+            );
+
+            data = &data[128..];
+            chunk_n -= 128;
+        }
+
         while chunk_n >= 64 {
             let data_a = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
             let data_b = _mm256_loadu_si256(data.as_ptr().add(32) as *const __m256i);
@@ -131,17 +183,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             data = &data[64..];
             chunk_n -= 64;
         }
-
-        let mults_a = _mm256_set_epi16(
-            41, 42, 43, 44, 45, 46, 47, 48, 57, 58, 59, 60, 61, 62, 63, 64,
-        );
-        let mults_b = _mm256_set_epi16(
-            33, 34, 35, 36, 37, 38, 39, 40, 49, 50, 51, 52, 53, 54, 55, 56,
-        );
-        let mults_c = _mm256_set_epi16(
-            9, 10, 11, 12, 13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32,
-        );
-        let mults_d = _mm256_set_epi16(1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21, 22, 23, 24);
 
         let mut v_s2 = _mm256_add_epi32(
             _mm256_madd_epi16(v_byte_sums_a, mults_a),

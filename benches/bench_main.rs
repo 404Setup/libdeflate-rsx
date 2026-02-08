@@ -24,12 +24,20 @@ fn bench_checksums(c: &mut Criterion) {
     let mut group = c.benchmark_group("Checksums");
     group.throughput(Throughput::Bytes(size as u64));
 
-    group.bench_with_input("Adler32", &size, |b, &_size| {
+    group.bench_with_input("Adler32/libdeflate-rs", &size, |b, &_size| {
         b.iter(|| adler32(1, &data));
     });
 
-    group.bench_with_input("CRC32", &size, |b, &_size| {
+    group.bench_with_input("Adler32/libdeflater", &size, |b, &_size| {
+        b.iter(|| libdeflater::adler32(&data));
+    });
+
+    group.bench_with_input("CRC32/libdeflate-rs", &size, |b, &_size| {
         b.iter(|| crc32(0, &data));
+    });
+
+    group.bench_with_input("CRC32/libdeflater", &size, |b, &_size| {
+        b.iter(|| libdeflater::crc32(&data));
     });
 
     group.finish();
