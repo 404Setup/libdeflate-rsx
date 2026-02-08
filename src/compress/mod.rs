@@ -1029,31 +1029,52 @@ impl Compressor {
         let mut in_idx = start_pos;
         self.split_stats.reset();
 
-        while in_idx < input.len() {
-            let block_len = in_idx - start_pos;
-            if self
-                .split_stats
-                .should_end_block(block_len, input.len() - in_idx)
-            {
-                break;
-            }
-            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
-            if len >= 3 {
-                self.split_stats.observe_match(len, offset);
-                self.sequences.push(Sequence {
-                    litrunlen,
-                    length: len as u16,
-                    offset: offset as u16,
-                });
-                litrunlen = 0;
-                in_idx += len;
-                for i in 1..len {
-                    mf.skip_match(input, in_idx - len + i, self.max_search_depth);
+        if input.len() <= 65536 {
+             while in_idx < input.len() {
+                let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+                if len >= 3 {
+                    self.sequences.push(Sequence {
+                        litrunlen,
+                        length: len as u16,
+                        offset: offset as u16,
+                    });
+                    litrunlen = 0;
+                    in_idx += len;
+                    for i in 1..len {
+                        mf.skip_match(input, in_idx - len + i, self.max_search_depth);
+                    }
+                } else {
+                    litrunlen += 1;
+                    in_idx += 1;
                 }
-            } else {
-                self.split_stats.observe_literal(input[in_idx]);
-                litrunlen += 1;
-                in_idx += 1;
+             }
+        } else {
+            while in_idx < input.len() {
+                let block_len = in_idx - start_pos;
+                if self
+                    .split_stats
+                    .should_end_block(block_len, input.len() - in_idx)
+                {
+                    break;
+                }
+                let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+                if len >= 3 {
+                    self.split_stats.observe_match(len, offset);
+                    self.sequences.push(Sequence {
+                        litrunlen,
+                        length: len as u16,
+                        offset: offset as u16,
+                    });
+                    litrunlen = 0;
+                    in_idx += len;
+                    for i in 1..len {
+                        mf.skip_match(input, in_idx - len + i, self.max_search_depth);
+                    }
+                } else {
+                    self.split_stats.observe_literal(input[in_idx]);
+                    litrunlen += 1;
+                    in_idx += 1;
+                }
             }
         }
         self.sequences.push(Sequence {

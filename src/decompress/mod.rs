@@ -485,6 +485,103 @@ impl Decompressor {
         }
 
         loop {
+            while *in_idx + 15 < input.len() && *out_idx + 258 < output.len() {
+                if self.bitsleft < 32 {
+                     let word = unsafe { (input.as_ptr().add(*in_idx) as *const u64).read_unaligned() };
+                     let word = u64::from_le(word);
+                     self.bitbuf |= word << self.bitsleft;
+                     let consumed = (63 - self.bitsleft) >> 3;
+                     *in_idx += consumed as usize;
+                     self.bitsleft |= 56;
+                }
+
+                let entry = unsafe { *self.litlen_decode_table.get_unchecked((self.bitbuf as usize) & litlen_tablemask) };
+                
+                if entry & HUFFDEC_EXCEPTIONAL != 0 {
+                    break;
+                }
+
+                let saved_bitbuf = self.bitbuf;
+                let total_bits = entry & 0xFF;
+                self.bitbuf >>= total_bits;
+                self.bitsleft -= total_bits;
+
+                if entry & HUFFDEC_LITERAL != 0 {
+                    unsafe {
+                        *output.get_unchecked_mut(*out_idx) = (entry >> 16) as u8;
+                    }
+                    *out_idx += 1;
+                } else {
+                    let mut length = (entry >> 16) as usize;
+                    let len = (entry >> 8) & 0xFF;
+                    let extra_bits = total_bits - len;
+                    if extra_bits > 0 {
+                        length += ((saved_bitbuf >> len) as usize) & ((1 << extra_bits) - 1);
+                    }
+
+                    if self.bitsleft < 32 {
+                         let word = unsafe { (input.as_ptr().add(*in_idx) as *const u64).read_unaligned() };
+                         let word = u64::from_le(word);
+                         self.bitbuf |= word << self.bitsleft;
+                         let consumed = (63 - self.bitsleft) >> 3;
+                         *in_idx += consumed as usize;
+                         self.bitsleft |= 56;
+                    }
+
+                    let mut off_entry = unsafe { *self.offset_decode_table.get_unchecked((self.bitbuf as usize) & ((1 << OFFSET_TABLEBITS) - 1)) };
+                    
+                    if off_entry & HUFFDEC_EXCEPTIONAL != 0 {
+                         if off_entry & HUFFDEC_SUBTABLE_POINTER != 0 {
+                              let main_bits = off_entry & 0xFF;
+                              self.bitbuf >>= main_bits;
+                              self.bitsleft -= main_bits;
+                              let subtable_idx = (off_entry >> 16) as usize;
+                              let subtable_bits = (off_entry >> 8) & 0x3F;
+                              off_entry = unsafe { *self.offset_decode_table.get_unchecked(subtable_idx + ((self.bitbuf as usize) & ((1 << subtable_bits) - 1))) };
+                         } else {
+                             break;
+                         }
+                    }
+
+                    let saved_bitbuf_off = self.bitbuf;
+                    let total_bits_off = off_entry & 0xFF;
+                    self.bitbuf >>= total_bits_off;
+                    self.bitsleft -= total_bits_off;
+                    let mut offset = (off_entry >> 16) as usize;
+                    let len_off = (off_entry >> 8) & 0xFF;
+                    let extra_bits_off = total_bits_off - len_off;
+                    if extra_bits_off > 0 {
+                        offset += ((saved_bitbuf_off >> len_off) as usize) & ((1 << extra_bits_off) - 1);
+                    }
+                    
+                    let src = *out_idx - offset;
+                    let dest = *out_idx;
+                    
+                    unsafe {
+                        let out_ptr = output.as_mut_ptr();
+                        if offset < 16 {
+                             let src_ptr = out_ptr.add(src);
+                             let dest_ptr = out_ptr.add(dest);
+                             for i in 0..length {
+                                 *dest_ptr.add(i) = *src_ptr.add(i);
+                             }
+                        } else {
+                             let mut copied = 0;
+                             while copied < length {
+                                 let copy_len = std::cmp::min(offset, length - copied);
+                                 std::ptr::copy_nonoverlapping(
+                                     out_ptr.add(src + copied),
+                                     out_ptr.add(dest + copied),
+                                     copy_len,
+                                 );
+                                 copied += copy_len;
+                             }
+                        }
+                    }
+                    *out_idx += length;
+                }
+            }
+
             refill_bits!(input, *in_idx, self.bitbuf, self.bitsleft);
             let mut entry = self.litlen_decode_table[(self.bitbuf as usize) & litlen_tablemask];
             if entry & HUFFDEC_EXCEPTIONAL != 0 {
