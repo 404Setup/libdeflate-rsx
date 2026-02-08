@@ -1559,15 +1559,15 @@ impl Compressor {
     }
 
     pub fn deflate_compress_bound(size: usize) -> usize {
-        size + (size / 65535 + 1) * 5 + 10
+        size.saturating_add((size / 65535 + 1) * 5 + 10)
     }
 
     pub fn zlib_compress_bound(size: usize) -> usize {
-        ZLIB_MIN_OVERHEAD + Self::deflate_compress_bound(size)
+        ZLIB_MIN_OVERHEAD.saturating_add(Self::deflate_compress_bound(size))
     }
 
     pub fn gzip_compress_bound(size: usize) -> usize {
-        GZIP_MIN_OVERHEAD + Self::deflate_compress_bound(size)
+        GZIP_MIN_OVERHEAD.saturating_add(Self::deflate_compress_bound(size))
     }
 
     pub fn compress_zlib(&mut self, input: &[u8], output: &mut [u8]) -> (CompressResult, usize) {

@@ -135,3 +135,17 @@ fn test_buffer_reuse() {
     let decomp2 = d.decompress_deflate(&comp2, data2.len()).unwrap();
     assert_eq!(data2.to_vec(), decomp2);
 }
+#[test]
+fn test_compress_bound_overflow_check() {
+    let mut compressor = Compressor::new(1).unwrap();
+    let size = usize::MAX - 100;
+
+    let bound = compressor.deflate_compress_bound(size);
+    assert!(bound >= size);
+
+    let bound = compressor.zlib_compress_bound(size);
+    assert!(bound >= size);
+
+    let bound = compressor.gzip_compress_bound(size);
+    assert!(bound >= size);
+}
