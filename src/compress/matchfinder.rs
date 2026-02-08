@@ -10,6 +10,124 @@ pub const MATCHFINDER_HASH_ORDER: usize = 15;
 pub const MATCHFINDER_HASH_SIZE: usize = 1 << MATCHFINDER_HASH_ORDER;
 pub const MATCHFINDER_WINDOW_SIZE: usize = 32768;
 
+pub trait MatchFinderTrait {
+    fn reset(&mut self);
+    fn prepare(&mut self, len: usize);
+    fn advance(&mut self, len: usize);
+    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize);
+    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize);
+    fn find_matches(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        matches: &mut Vec<(u16, u16)>,
+    ) -> (usize, usize);
+}
+
+impl MatchFinderTrait for MatchFinder {
+    fn reset(&mut self) {
+        self.reset();
+    }
+    fn prepare(&mut self, len: usize) {
+        self.prepare(len);
+    }
+    fn advance(&mut self, len: usize) {
+        self.advance(len);
+    }
+    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
+        self.find_match(data, pos, max_depth)
+    }
+    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
+        self.skip_match(data, pos);
+    }
+    fn find_matches(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        matches: &mut Vec<(u16, u16)>,
+    ) -> (usize, usize) {
+        self.find_matches(data, pos, max_depth, matches)
+    }
+}
+
+impl MatchFinderTrait for HtMatchFinder {
+    fn reset(&mut self) {
+        self.reset();
+    }
+    fn prepare(&mut self, len: usize) {
+        self.prepare(len);
+    }
+    fn advance(&mut self, len: usize) {
+        self.advance(len);
+    }
+    fn find_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) -> (usize, usize) {
+        self.find_match(data, pos)
+    }
+    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
+        self.skip_match(data, pos);
+    }
+    fn find_matches(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        _max_depth: usize,
+        matches: &mut Vec<(u16, u16)>,
+    ) -> (usize, usize) {
+        let (len, offset) = self.find_match(data, pos);
+        matches.clear();
+        if len >= 3 {
+            matches.push((len as u16, offset as u16));
+            (len, offset)
+        } else {
+            (0, 0)
+        }
+    }
+}
+
+impl MatchFinderTrait for BtMatchFinder {
+    fn reset(&mut self) {
+        self.reset();
+    }
+    fn prepare(&mut self, len: usize) {
+        self.prepare(len);
+    }
+    fn advance(&mut self, len: usize) {
+        self.advance(len);
+    }
+    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
+        self.find_match(data, pos, max_depth)
+    }
+    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize) {
+        let mut matches = Vec::new();
+        self.advance_one_byte(data, pos, 0, 0, max_depth, &mut matches, false);
+    }
+    fn find_matches(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        matches: &mut Vec<(u16, u16)>,
+    ) -> (usize, usize) {
+        matches.clear();
+        self.advance_one_byte(
+            data,
+            pos,
+            DEFLATE_MAX_MATCH_LEN,
+            DEFLATE_MAX_MATCH_LEN,
+            max_depth,
+            matches,
+            true,
+        );
+        if let Some(&(len, offset)) = matches.last() {
+            (len as usize, offset as usize)
+        } else {
+            (0, 0)
+        }
+    }
+}
+
 #[inline(always)]
 unsafe fn match_len_ptr(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
@@ -520,7 +638,7 @@ impl BtMatchFinder {
                 .wrapping_mul(0x1E35A7BD);
             let h3 = (h3 >> 16) as usize;
 
-            let h4 = (src.cast::<u32>().read_unaligned()).wrapping_mul(0x1E35A7BD);
+            let h4 = src.cast::<u32>().read_unaligned().wrapping_mul(0x1E35A7BD);
             let h4 = (h4 >> 16) as usize;
 
             let abs_pos = self.base_offset + pos;
@@ -654,7 +772,7 @@ impl BtMatchFinder {
                 .wrapping_mul(0x1E35A7BD);
             let h3 = (h3 >> 16) as usize;
 
-            let h4 = (src.cast::<u32>().read_unaligned()).wrapping_mul(0x1E35A7BD);
+            let h4 = src.cast::<u32>().read_unaligned().wrapping_mul(0x1E35A7BD);
             let h4 = (h4 >> 16) as usize;
 
             let abs_pos = self.base_offset + pos;

@@ -4,7 +4,7 @@ mod huffman_comp;
 mod matchfinder;
 
 use rayon::prelude::*;
-use self::matchfinder::{BtMatchFinder, HtMatchFinder, MatchFinder};
+use self::matchfinder::{BtMatchFinder, HtMatchFinder, MatchFinder, MatchFinderTrait};
 use self::bitstream::Bitstream;
 use self::huffman_comp::make_huffman_code;
 use crate::common::*;
@@ -362,6 +362,81 @@ impl Compressor {
         }
     }
 
+    fn compress_loop<T: MatchFinderTrait>(
+        &mut self,
+        mf: &mut T,
+        input: &[u8],
+        bs: &mut Bitstream,
+        flush_mode: FlushMode,
+    ) -> (CompressResult, usize, u32) {
+        let mut in_idx = 0;
+        mf.prepare(input.len());
+
+        while in_idx < input.len() {
+            let processed = if self.compression_level >= 10 {
+                self.compress_near_optimal_block(mf, input, in_idx, bs, flush_mode == FlushMode::Finish)
+            } else {
+                let lazy_depth = if self.compression_level >= 8 {
+                    2
+                } else if self.compression_level >= 5 {
+                    1
+                } else {
+                    0
+                };
+                self.compress_greedy_block(mf, input, in_idx, bs, lazy_depth, flush_mode == FlushMode::Finish)
+            };
+
+            if processed == 0 {
+                mf.advance(input.len());
+                return (CompressResult::InsufficientSpace, 0, 0);
+            }
+            in_idx += processed;
+        }
+
+        if in_idx == 0 && flush_mode == FlushMode::Finish {
+             let start_out = bs.out_idx;
+             if self.compression_level >= 10 {
+                 self.compress_near_optimal_block(mf, input, 0, bs, true);
+             } else {
+                 self.compress_greedy_block(mf, input, 0, bs, 0, true);
+             }
+             if bs.out_idx == start_out {
+                  mf.advance(input.len());
+                  return (CompressResult::InsufficientSpace, 0, 0);
+             }
+        }
+
+        if flush_mode == FlushMode::Sync {
+             if !bs.write_bits(0, 3) {
+                 mf.advance(input.len());
+                 return (CompressResult::InsufficientSpace, 0, 0);
+             }
+             let (res, _) = bs.flush();
+             if !res {
+                 mf.advance(input.len());
+                 return (CompressResult::InsufficientSpace, 0, 0);
+             }
+             if bs.out_idx + 4 > bs.output.len() {
+                 mf.advance(input.len());
+                 return (CompressResult::InsufficientSpace, 0, 0);
+             }
+             bs.output[bs.out_idx] = 0;
+             bs.output[bs.out_idx + 1] = 0;
+             bs.output[bs.out_idx + 2] = 0xFF;
+             bs.output[bs.out_idx + 3] = 0xFF;
+             bs.out_idx += 4;
+        }
+
+        let (res, valid_bits) = bs.flush();
+        if !res {
+            mf.advance(input.len());
+            return (CompressResult::InsufficientSpace, 0, 0);
+        }
+
+        mf.advance(input.len());
+        (CompressResult::Success, bs.out_idx, valid_bits)
+    }
+
     pub fn compress(
         &mut self,
         input: &[u8],
@@ -415,88 +490,28 @@ impl Compressor {
         }
 
         let mut bs = Bitstream::new(output);
-        let mut in_idx = 0;
-        self.mf.prepare(input.len());
-
-        while in_idx < input.len() {
-            let processed = if self.compression_level >= 10 {
-                self.compress_near_optimal_block(input, in_idx, &mut bs, flush_mode == FlushMode::Finish)
-            } else {
-                let lazy_depth = if self.compression_level >= 8 {
-                    2
-                } else if self.compression_level >= 5 {
-                    1
-                } else {
-                    0
-                };
-                self.compress_greedy_block(input, in_idx, &mut bs, lazy_depth, flush_mode == FlushMode::Finish)
-            };
-
-            if processed == 0 {
-                self.mf.advance(input.len());
-                return (CompressResult::InsufficientSpace, 0, 0);
-            }
-            in_idx += processed;
-        }
-
-        if in_idx == 0 && flush_mode == FlushMode::Finish {
-             let start_out = bs.out_idx;
-             if self.compression_level >= 10 {
-                 self.compress_near_optimal_block(input, 0, &mut bs, true);
-             } else {
-                 self.compress_greedy_block(input, 0, &mut bs, 0, true);
-             }
-             if bs.out_idx == start_out {
-                  self.mf.advance(input.len());
-                  return (CompressResult::InsufficientSpace, 0, 0);
-             }
-        }
-
-        if flush_mode == FlushMode::Sync {
-             if !bs.write_bits(0, 3) {
-                 self.mf.advance(input.len());
-                 return (CompressResult::InsufficientSpace, 0, 0);
-             }
-             let (res, _) = bs.flush();
-             if !res {
-                 self.mf.advance(input.len());
-                 return (CompressResult::InsufficientSpace, 0, 0);
-             }
-             if bs.out_idx + 4 > bs.output.len() {
-                 self.mf.advance(input.len());
-                 return (CompressResult::InsufficientSpace, 0, 0);
-             }
-             bs.output[bs.out_idx] = 0;
-             bs.output[bs.out_idx + 1] = 0;
-             bs.output[bs.out_idx + 2] = 0xFF;
-             bs.output[bs.out_idx + 3] = 0xFF;
-             bs.out_idx += 4;
-        }
-
-        let (res, valid_bits) = bs.flush();
-        if !res {
-            self.mf.advance(input.len());
-            return (CompressResult::InsufficientSpace, 0, 0);
-        }
-
-        self.mf.advance(input.len());
-        (CompressResult::Success, bs.out_idx, valid_bits)
+        
+        let mut mf_enum = std::mem::replace(&mut self.mf, MatchFinderEnum::Chain(MatchFinder::new()));
+        
+        let res = match &mut mf_enum {
+            MatchFinderEnum::Chain(mf) => self.compress_loop(mf, input, &mut bs, flush_mode),
+            MatchFinderEnum::Table(mf) => self.compress_loop(mf, input, &mut bs, flush_mode),
+            MatchFinderEnum::Bt(mf) => self.compress_loop(mf, input, &mut bs, flush_mode),
+        };
+        
+        self.mf = mf_enum;
+        res
     }
 
-    pub fn compress_to_size(&mut self, input: &[u8], final_block: bool) -> usize {
-        if self.compression_level == 0 {
-            let num_blocks = input.len() / 65535
-                + if input.len() % 65535 != 0 || (input.len() == 0 && final_block) {
-                    1
-                } else {
-                    0
-                };
-            return input.len() + num_blocks * 5;
-        }
-
+    fn compress_to_size_loop<T: MatchFinderTrait>(
+        &mut self,
+        mf: &mut T,
+        input: &[u8],
+        _final_block: bool,
+    ) -> usize {
         let mut in_idx = 0;
         let mut total_bits = 0;
-        self.mf.prepare(input.len());
+        mf.prepare(input.len());
 
         while in_idx < input.len() {
             let block_start = in_idx;
@@ -504,7 +519,7 @@ impl Compressor {
 
             if self.compression_level < 2 {
                 total_bits += 3;
-                processed = self.accumulate_greedy_frequencies(input, in_idx, 0);
+                processed = self.accumulate_greedy_frequencies(mf, input, in_idx, 0);
                 self.load_static_huffman_codes();
                 total_bits += self.calculate_block_data_size();
             } else if self.compression_level >= 10 {
@@ -519,12 +534,12 @@ impl Compressor {
                     {
                         break;
                     }
-                    let (len, offset) = self.mf.find_match(input, p, self.max_search_depth);
+                    let (len, offset) = mf.find_match(input, p, self.max_search_depth);
                     if len >= 3 {
                         self.split_stats.observe_match(len, offset);
                         p += len;
                         for i in 1..len {
-                            self.mf
+                            mf
                                 .skip_match(input, p - len + i, self.max_search_depth);
                         }
                     } else {
@@ -539,11 +554,11 @@ impl Compressor {
                 let mut cur_in_idx = 0;
                 self.litlen_freqs.fill(0);
                 self.offset_freqs.fill(0);
-                self.mf.reset();
+                mf.reset();
 
                 while cur_in_idx < block_input.len() {
                     let (len, offset) =
-                        self.mf
+                        mf
                             .find_match(block_input, cur_in_idx, self.max_search_depth);
                     if len >= 3 {
                         self.sequences.push(Sequence {
@@ -555,7 +570,7 @@ impl Compressor {
                         self.offset_freqs[self.get_offset_slot(offset)] += 1;
                         cur_in_idx += len;
                         for i in 1..len {
-                            self.mf.skip_match(
+                            mf.skip_match(
                                 block_input,
                                 cur_in_idx - len + i,
                                 self.max_search_depth,
@@ -594,7 +609,7 @@ impl Compressor {
                 );
                 self.dp_nodes[0].cost = 0;
 
-                self.mf.reset();
+                mf.reset();
                 let mut matches = Vec::new();
                 for pos in 0..processed {
                     let cur_cost = self.dp_nodes[pos].cost;
@@ -611,7 +626,7 @@ impl Compressor {
                         };
                     }
 
-                    self.mf
+                    mf
                         .find_matches(block_input, pos, self.max_search_depth, &mut matches);
                     for &(len, offset) in &matches {
                         let len = len as usize;
@@ -672,7 +687,7 @@ impl Compressor {
                 } else {
                     0
                 };
-                processed = self.decide_greedy_sequences(input, in_idx, lazy_depth);
+                processed = self.decide_greedy_sequences(mf, input, in_idx, lazy_depth);
 
                 make_huffman_code(
                     DEFLATE_NUM_LITLEN_SYMS,
@@ -696,12 +711,36 @@ impl Compressor {
             in_idx += processed;
         }
 
-        self.mf.advance(input.len());
+        mf.advance(input.len());
         (total_bits + 7) / 8
     }
 
-    fn accumulate_greedy_frequencies(
+    pub fn compress_to_size(&mut self, input: &[u8], final_block: bool) -> usize {
+        if self.compression_level == 0 {
+            let num_blocks = input.len() / 65535
+                + if input.len() % 65535 != 0 || (input.len() == 0 && final_block) {
+                    1
+                } else {
+                    0
+                };
+            return input.len() + num_blocks * 5;
+        }
+
+        let mut mf_enum = std::mem::replace(&mut self.mf, MatchFinderEnum::Chain(MatchFinder::new()));
+        
+        let res = match &mut mf_enum {
+            MatchFinderEnum::Chain(mf) => self.compress_to_size_loop(mf, input, final_block),
+            MatchFinderEnum::Table(mf) => self.compress_to_size_loop(mf, input, final_block),
+            MatchFinderEnum::Bt(mf) => self.compress_to_size_loop(mf, input, final_block),
+        };
+        
+        self.mf = mf_enum;
+        res
+    }
+
+    fn accumulate_greedy_frequencies<T: MatchFinderTrait>(
         &mut self,
+        mf: &mut T,
         input: &[u8],
         start_pos: usize,
         lazy_depth: u32,
@@ -720,12 +759,12 @@ impl Compressor {
                 break;
             }
 
-            let (len, offset) = self.mf.find_match(input, in_idx, self.max_search_depth);
+            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
 
             if len >= 3 {
                 if lazy_depth >= 1 && in_idx + 1 < input.len() {
                     let (next_len, _next_offset) =
-                        self.mf.find_match(input, in_idx + 1, self.max_search_depth);
+                        mf.find_match(input, in_idx + 1, self.max_search_depth);
                     if next_len > len {
                         // Skip
                     }
@@ -736,8 +775,7 @@ impl Compressor {
                 self.offset_freqs[self.get_offset_slot(offset)] += 1;
                 in_idx += len;
                 for i in 1..len {
-                    self.mf
-                        .skip_match(input, in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(input, in_idx - len + i, self.max_search_depth);
                 }
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -862,8 +900,9 @@ impl Compressor {
         bits
     }
 
-    fn decide_greedy_sequences(
+    fn decide_greedy_sequences<T: MatchFinderTrait>(
         &mut self,
+        mf: &mut T,
         input: &[u8],
         start_pos: usize,
         lazy_depth: u32,
@@ -884,16 +923,16 @@ impl Compressor {
                 break;
             }
 
-            let (mut len, mut offset) = self.mf.find_match(input, in_idx, self.max_search_depth);
+            let (mut len, mut offset) = mf.find_match(input, in_idx, self.max_search_depth);
 
             if len >= 3 {
                 if lazy_depth >= 1 && in_idx + 1 < input.len() {
                     let (next_len, next_offset) =
-                        self.mf.find_match(input, in_idx + 1, self.max_search_depth);
+                        mf.find_match(input, in_idx + 1, self.max_search_depth);
                     if next_len > len {
                         if lazy_depth >= 2 && in_idx + 2 < input.len() {
                             let (next2_len, next2_offset) =
-                                self.mf.find_match(input, in_idx + 2, self.max_search_depth);
+                                mf.find_match(input, in_idx + 2, self.max_search_depth);
                             if next2_len > next_len {
                                 self.split_stats.observe_literal(input[in_idx]);
                                 self.litlen_freqs[input[in_idx] as usize] += 1;
@@ -939,8 +978,7 @@ impl Compressor {
                 litrunlen = 0;
                 in_idx += len;
                 for i in 1..len {
-                    self.mf
-                        .skip_match(input, in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(input, in_idx - len + i, self.max_search_depth);
                 }
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -1038,8 +1076,9 @@ impl Compressor {
         (CompressResult::Success, bs.out_idx, 0)
     }
 
-    fn compress_greedy_block(
+    fn compress_greedy_block<T: MatchFinderTrait>(
         &mut self,
+        mf: &mut T,
         input: &[u8],
         start_pos: usize,
         bs: &mut Bitstream,
@@ -1047,7 +1086,7 @@ impl Compressor {
         final_block: bool,
     ) -> usize {
         if self.compression_level >= 2 {
-            let processed = self.decide_greedy_sequences(input, start_pos, lazy_depth);
+            let processed = self.decide_greedy_sequences(mf, input, start_pos, lazy_depth);
             let is_final = (start_pos + processed >= input.len()) && final_block;
             make_huffman_code(
                 DEFLATE_NUM_LITLEN_SYMS,
@@ -1083,7 +1122,7 @@ impl Compressor {
             {
                 break;
             }
-            let (len, offset) = self.mf.find_match(input, in_idx, self.max_search_depth);
+            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
                 self.sequences.push(Sequence {
@@ -1094,8 +1133,7 @@ impl Compressor {
                 litrunlen = 0;
                 in_idx += len;
                 for i in 1..len {
-                    self.mf
-                        .skip_match(input, in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(input, in_idx - len + i, self.max_search_depth);
                 }
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -1133,8 +1171,9 @@ impl Compressor {
         processed
     }
 
-    fn compress_near_optimal_block(
+    fn compress_near_optimal_block<T: MatchFinderTrait>(
         &mut self,
+        mf: &mut T,
         input: &[u8],
         start_pos: usize,
         bs: &mut Bitstream,
@@ -1151,13 +1190,12 @@ impl Compressor {
             {
                 break;
             }
-            let (len, offset) = self.mf.find_match(input, in_idx, self.max_search_depth);
+            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
                 in_idx += len;
                 for i in 1..len {
-                    self.mf
-                        .skip_match(input, in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(input, in_idx - len + i, self.max_search_depth);
                 }
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -1175,12 +1213,11 @@ impl Compressor {
         self.litlen_freqs.fill(0);
         self.offset_freqs.fill(0);
 
-        self.mf.reset();
+        mf.reset();
 
         while cur_in_idx < block_input.len() {
-            let (len, offset) = self
-                .mf
-                .find_match(block_input, cur_in_idx, self.max_search_depth);
+            let (len, offset) =
+                mf.find_match(block_input, cur_in_idx, self.max_search_depth);
             if len >= 3 {
                 self.sequences.push(Sequence {
                     litrunlen,
@@ -1192,8 +1229,7 @@ impl Compressor {
                 litrunlen = 0;
                 cur_in_idx += len;
                 for i in 1..len {
-                    self.mf
-                        .skip_match(block_input, cur_in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(block_input, cur_in_idx - len + i, self.max_search_depth);
                 }
             } else {
                 self.litlen_freqs[block_input[cur_in_idx] as usize] += 1;
@@ -1229,7 +1265,7 @@ impl Compressor {
         );
         self.dp_nodes[0].cost = 0;
 
-        self.mf.reset();
+        mf.reset();
         let mut matches = Vec::new();
         for pos in 0..processed {
             let cur_cost = self.dp_nodes[pos].cost;
@@ -1246,8 +1282,7 @@ impl Compressor {
                 };
             }
 
-            self.mf
-                .find_matches(block_input, pos, self.max_search_depth, &mut matches);
+            mf.find_matches(block_input, pos, self.max_search_depth, &mut matches);
             for &(len, offset) in &matches {
                 let len = len as usize;
                 if pos + len > processed {

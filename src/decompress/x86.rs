@@ -187,8 +187,23 @@ pub unsafe fn decompress_bmi2(
                             let b = *out_ptr.add(src);
                             std::ptr::write_bytes(out_ptr.add(dest), b, length);
                         } else {
-                            for i in 0..length {
-                                *out_ptr.add(dest + i) = *out_ptr.add(src + i);
+                            let mut copied = 0;
+                            if offset >= 8 {
+                                while copied + 8 <= length {
+                                    let val = std::ptr::read_unaligned(out_ptr.add(src + copied) as *const u64);
+                                    std::ptr::write_unaligned(out_ptr.add(dest + copied) as *mut u64, val);
+                                    copied += 8;
+                                }
+                            } else if offset >= 4 {
+                                while copied + 4 <= length {
+                                    let val = std::ptr::read_unaligned(out_ptr.add(src + copied) as *const u32);
+                                    std::ptr::write_unaligned(out_ptr.add(dest + copied) as *mut u32, val);
+                                    copied += 4;
+                                }
+                            }
+                            while copied < length {
+                                *out_ptr.add(dest + copied) = *out_ptr.add(src + copied);
+                                copied += 1;
                             }
                         }
                         out_idx += length;
