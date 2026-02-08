@@ -49,10 +49,6 @@ struct BlockSplitStats {
     num_observations: u32,
 }
 
-#[inline(always)]
-fn bsr32(v: u32) -> u32 {
-    31 - v.leading_zeros()
-}
 
 impl BlockSplitStats {
     fn new() -> Self {

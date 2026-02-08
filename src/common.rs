@@ -69,3 +69,8 @@ pub const GZIP_OS_UNKNOWN: u8 = 255;
 pub const MIN_BLOCK_LENGTH: usize = 5000;
 pub const SOFT_MAX_BLOCK_LENGTH: usize = 300000;
 pub const SEQ_STORE_LENGTH: usize = 50000;
+
+#[inline(always)]
+pub fn bsr32(v: u32) -> u32 {
+    31 - v.leading_zeros()
+}

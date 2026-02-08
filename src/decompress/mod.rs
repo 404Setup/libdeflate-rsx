@@ -822,10 +822,6 @@ impl Decompressor {
     }
 }
 
-#[inline(always)]
-fn bsr32(v: u32) -> u32 {
-    31 - v.leading_zeros()
-}
 
 #[inline(always)]
 fn make_decode_table_entry(decode_results: &[u32], sym: usize, len: u32) -> u32 {
