@@ -180,11 +180,24 @@ pub unsafe fn decompress_bmi2(
                              std::ptr::write_unaligned(out_ptr.add(dest) as *mut u64, v1);
                              std::ptr::write_unaligned(out_ptr.add(dest + 8) as *mut u64, v2);
                              if length > 16 {
-                                 std::ptr::copy_nonoverlapping(
-                                     out_ptr.add(src + 16),
-                                     out_ptr.add(dest + 16),
-                                     length - 16,
-                                 );
+                                 if offset >= length {
+                                     std::ptr::copy_nonoverlapping(
+                                         out_ptr.add(src + 16),
+                                         out_ptr.add(dest + 16),
+                                         length - 16,
+                                     );
+                                 } else {
+                                     let mut copied = 16;
+                                     while copied < length {
+                                         let copy_len = std::cmp::min(offset, length - copied);
+                                         std::ptr::copy_nonoverlapping(
+                                             out_ptr.add(src + copied),
+                                             out_ptr.add(dest + copied),
+                                             copy_len,
+                                         );
+                                         copied += copy_len;
+                                     }
+                                 }
                              }
                         } else if offset >= length {
                             std::ptr::copy_nonoverlapping(
