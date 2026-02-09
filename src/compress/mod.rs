@@ -415,7 +415,7 @@ impl Compressor {
                             unsafe {
                                 buf.set_len(size);
                             }
-                            Ok(buf.clone())
+                            Ok(std::mem::replace(buf, Vec::with_capacity(chunk_size + chunk_size / 2)))
                         } else {
                             Err(io::Error::new(io::ErrorKind::Other, "Compression failed"))
                         }
