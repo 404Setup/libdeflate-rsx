@@ -80,10 +80,6 @@ pub unsafe fn decompress_bmi2(
                     bitbuf = d.bitbuf;
                     bitsleft = d.bitsleft;
                     if res != DecompressResult::Success {
-                        /*if res == DecompressResult::ShortInput {
-                            let rewind = (bitsleft + 7) / 8;
-                            in_idx -= rewind as usize;
-                        }*/
                         return (res, 0, 0);
                     }
                 } else {
@@ -177,7 +173,20 @@ pub unsafe fn decompress_bmi2(
                         }
 
                         let out_ptr = output.as_mut_ptr();
-                        if offset >= length {
+                        
+                        if offset >= 16 && dest + 16 <= out_len {
+                             let v1 = std::ptr::read_unaligned(out_ptr.add(src) as *const u64);
+                             let v2 = std::ptr::read_unaligned(out_ptr.add(src + 8) as *const u64);
+                             std::ptr::write_unaligned(out_ptr.add(dest) as *mut u64, v1);
+                             std::ptr::write_unaligned(out_ptr.add(dest + 8) as *mut u64, v2);
+                             if length > 16 {
+                                 std::ptr::copy_nonoverlapping(
+                                     out_ptr.add(src + 16),
+                                     out_ptr.add(dest + 16),
+                                     length - 16,
+                                 );
+                             }
+                        } else if offset >= length {
                             std::ptr::copy_nonoverlapping(
                                 out_ptr.add(src),
                                 out_ptr.add(dest),

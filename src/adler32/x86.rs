@@ -114,6 +114,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         
         let mut v_s2_a = _mm256_setzero_si256();
         let mut v_s2_b = _mm256_setzero_si256();
+        let mut v_s2_c = _mm256_setzero_si256();
+        let mut v_s2_d = _mm256_setzero_si256();
 
         while chunk_n >= 128 {
             let data_a_1 = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
@@ -121,35 +123,53 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let data_a_2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const __m256i);
             let data_b_2 = _mm256_loadu_si256(data.as_ptr().add(96) as *const __m256i);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
+            let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
+            let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
+            let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
+            let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
+
+            let v_s1_x4 = _mm256_slli_epi32(v_s1, 2);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1_x4);
+
+            let sad1_x2 = _mm256_slli_epi32(sad1, 1);
+            let sad1_x3 = _mm256_add_epi32(sad1_x2, sad1);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad1_x3);
+
+            let sad2_x2 = _mm256_slli_epi32(sad2, 1);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad2_x2);
+
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad3);
+
+            let sum_sads = _mm256_add_epi32(
+                _mm256_add_epi32(sad1, sad2),
+                _mm256_add_epi32(sad3, sad4)
+            );
+            v_s1 = _mm256_add_epi32(v_s1, sum_sads);
+
             let p1 = _mm256_maddubs_epi16(data_a_1, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_a_1, v_zero));
             let s_a = _mm256_madd_epi16(p1, ones_i16);
             v_s2_a = _mm256_add_epi32(v_s2_a, s_a);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
             let p2 = _mm256_maddubs_epi16(data_b_1, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_b_1, v_zero));
             let s_b = _mm256_madd_epi16(p2, ones_i16);
-            v_s2_a = _mm256_add_epi32(v_s2_a, s_b);
+            v_s2_b = _mm256_add_epi32(v_s2_b, s_b);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
             let p3 = _mm256_maddubs_epi16(data_a_2, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_a_2, v_zero));
             let s_c = _mm256_madd_epi16(p3, ones_i16);
-            v_s2_b = _mm256_add_epi32(v_s2_b, s_c);
+            v_s2_c = _mm256_add_epi32(v_s2_c, s_c);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
             let p4 = _mm256_maddubs_epi16(data_b_2, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_b_2, v_zero));
             let s_d = _mm256_madd_epi16(p4, ones_i16);
-            v_s2_b = _mm256_add_epi32(v_s2_b, s_d);
+            v_s2_d = _mm256_add_epi32(v_s2_d, s_d);
 
             data = &data[128..];
             chunk_n -= 128;
         }
         
-        let mut v_s2 = _mm256_add_epi32(v_s2_a, v_s2_b);
+        let mut v_s2 = _mm256_add_epi32(
+            _mm256_add_epi32(v_s2_a, v_s2_b),
+            _mm256_add_epi32(v_s2_c, v_s2_d)
+        );
 
         while chunk_n >= 64 {
             let data_a = _mm256_loadu_si256(data.as_ptr() as *const __m256i);

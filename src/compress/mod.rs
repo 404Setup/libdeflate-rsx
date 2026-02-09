@@ -40,7 +40,7 @@ const NUM_MATCH_OBSERVATION_TYPES: usize = 2;
 const NUM_OFFSET_OBSERVATION_TYPES: usize = 4;
 const NUM_OBSERVATION_TYPES: usize =
     NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES + NUM_OFFSET_OBSERVATION_TYPES;
-const NUM_OBSERVATIONS_PER_BLOCK_CHECK: u32 = 512;
+const NUM_OBSERVATIONS_PER_BLOCK_CHECK: u32 = 2048;
 
 struct BlockSplitStats {
     new_observations: [u32; NUM_OBSERVATION_TYPES],
@@ -73,14 +73,18 @@ impl BlockSplitStats {
 
     #[inline(always)]
     fn observe_literal(&mut self, lit: u8) {
-        self.new_observations[(lit >> 5) as usize] += 1;
+        unsafe {
+            *self.new_observations.get_unchecked_mut((lit >> 5) as usize) += 1;
+        }
         self.num_new_observations += 1;
     }
 
     #[inline(always)]
     fn observe_match(&mut self, length: usize, offset: usize) {
         let len_idx = NUM_LITERAL_OBSERVATION_TYPES + if length >= 8 { 1 } else { 0 };
-        self.new_observations[len_idx] += 1;
+        unsafe {
+            *self.new_observations.get_unchecked_mut(len_idx) += 1;
+        }
 
         let off_idx = NUM_LITERAL_OBSERVATION_TYPES
             + NUM_MATCH_OBSERVATION_TYPES
@@ -93,14 +97,18 @@ impl BlockSplitStats {
             } else {
                 3
             };
-        self.new_observations[off_idx] += 1;
+        unsafe {
+            *self.new_observations.get_unchecked_mut(off_idx) += 1;
+        }
 
         self.num_new_observations += 2;
     }
 
     fn merge_new_observations(&mut self) {
         for i in 0..NUM_OBSERVATION_TYPES {
-            self.observations[i] += self.new_observations[i];
+            unsafe {
+                *self.observations.get_unchecked_mut(i) += *self.new_observations.get_unchecked(i);
+            }
         }
         self.num_observations += self.num_new_observations;
         self.new_observations.fill(0);
@@ -113,11 +121,23 @@ impl BlockSplitStats {
         }
         let mut old_bits = 0;
         let mut new_bits = 0;
+        
+        let log2_num_obs = bsr32(self.num_observations);
+        let log2_num_new_obs = bsr32(self.num_new_observations);
+
         for i in 0..NUM_OBSERVATION_TYPES {
-            old_bits += self.new_observations[i]
-                * bsr32(self.num_observations / (self.observations[i] + 1) + 1);
-            new_bits += self.new_observations[i]
-                * bsr32(self.num_new_observations / (self.new_observations[i] + 1) + 1);
+            unsafe {
+                let new_obs = *self.new_observations.get_unchecked(i);
+                if new_obs > 0 {
+                    let log2_obs = bsr32(*self.observations.get_unchecked(i) + 1);
+                    let cost_old = log2_num_obs.saturating_sub(log2_obs);
+                    old_bits += new_obs * cost_old;
+
+                    let log2_new_obs = bsr32(new_obs + 1);
+                    let cost_new = log2_num_new_obs.saturating_sub(log2_new_obs);
+                    new_bits += new_obs * cost_new;
+                }
+            }
         }
         (old_bits as i32 - new_bits as i32) > (block_length as i32 / 16)
     }
