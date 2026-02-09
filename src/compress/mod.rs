@@ -920,22 +920,21 @@ impl Compressor {
         if !bs.write_bits(2, 2) {
             return false;
         }
-        self.write_dynamic_huffman_header_impl(bs);
+        if !self.write_dynamic_huffman_header_impl(bs) { return false; }
         let mut in_pos = start_pos;
         for seq in &self.sequences {
             for _ in 0..seq.litrunlen {
-                self.write_literal(bs, input[in_pos]);
+                if !self.write_literal(bs, input[in_pos]) { return false; }
                 in_pos += 1;
             }
             if seq.length >= 3 {
-                self.write_match(bs, seq.length as usize, seq.offset as usize);
+                if !self.write_match(bs, seq.length as usize, seq.offset as usize) { return false; }
                 in_pos += seq.length as usize;
             }
         }
-        self.write_sym(bs, 256);
+        if !self.write_sym(bs, 256) { return false; }
         true
     }
-
     fn compress_uncompressed(
         &mut self,
         input: &[u8],
@@ -1091,18 +1090,17 @@ impl Compressor {
         let mut in_pos = start_pos;
         for seq in &self.sequences {
             for _ in 0..seq.litrunlen {
-                self.write_literal(bs, input[in_pos]);
+                if !self.write_literal(bs, input[in_pos]) { return 0; }
                 in_pos += 1;
             }
             if seq.length >= 3 {
-                self.write_match(bs, seq.length as usize, seq.offset as usize);
+                if !self.write_match(bs, seq.length as usize, seq.offset as usize) { return 0; }
                 in_pos += seq.length as usize;
             }
         }
-        self.write_sym(bs, 256);
+        if !self.write_sym(bs, 256) { return 0; }
         processed
     }
-
     fn compress_near_optimal_block<T: MatchFinderTrait>(
         &mut self,
         mf: &mut T,
@@ -1291,7 +1289,7 @@ impl Compressor {
         processed
     }
 
-    fn write_dynamic_huffman_header_impl(&self, bs: &mut Bitstream) {
+    fn write_dynamic_huffman_header_impl(&self, bs: &mut Bitstream) -> bool {
         let mut num_litlen_syms = DEFLATE_NUM_LITLEN_SYMS;
         while num_litlen_syms > 257 && self.litlen_lens[num_litlen_syms - 1] == 0 {
             num_litlen_syms -= 1;
@@ -1300,8 +1298,8 @@ impl Compressor {
         while num_offset_syms > 1 && self.offset_lens[num_offset_syms - 1] == 0 {
             num_offset_syms -= 1;
         }
-        bs.write_bits((num_litlen_syms - 257) as u32, 5);
-        bs.write_bits((num_offset_syms - 1) as u32, 5);
+        if !bs.write_bits((num_litlen_syms - 257) as u32, 5) { return false; }
+        if !bs.write_bits((num_offset_syms - 1) as u32, 5) { return false; }
         let mut lens = Vec::new();
         lens.extend_from_slice(&self.litlen_lens[..num_litlen_syms]);
         lens.extend_from_slice(&self.offset_lens[..num_offset_syms]);
@@ -1363,22 +1361,22 @@ impl Compressor {
         while num_precode_syms > 4 && precode_lens[permutation[num_precode_syms - 1]] == 0 {
             num_precode_syms -= 1;
         }
-        bs.write_bits((num_precode_syms - 4) as u32, 4);
+        if !bs.write_bits((num_precode_syms - 4) as u32, 4) { return false; }
         for j in 0..num_precode_syms {
-            bs.write_bits(precode_lens[permutation[j]] as u32, 3);
+            if !bs.write_bits(precode_lens[permutation[j]] as u32, 3) { return false; }
         }
         for (sym, extra) in precode_items {
-            bs.write_bits(precode_codewords[sym], precode_lens[sym] as u32);
+            if !bs.write_bits(precode_codewords[sym], precode_lens[sym] as u32) { return false; }
             if sym == 16 {
-                bs.write_bits(extra as u32, 2);
+                if !bs.write_bits(extra as u32, 2) { return false; }
             } else if sym == 17 {
-                bs.write_bits(extra as u32, 3);
+                if !bs.write_bits(extra as u32, 3) { return false; }
             } else if sym == 18 {
-                bs.write_bits(extra as u32, 7);
+                if !bs.write_bits(extra as u32, 7) { return false; }
             }
         }
+        true
     }
-
     fn load_static_huffman_codes(&mut self) {
         let mut i = 0;
         while i < 144 {
@@ -1430,37 +1428,37 @@ impl Compressor {
         gen_codewords_from_lens(&self.offset_lens, &mut self.offset_codewords, 5);
     }
 
-    fn write_literal(&self, bs: &mut Bitstream, lit: u8) {
+    fn write_literal(&self, bs: &mut Bitstream, lit: u8) -> bool {
         let sym = lit as usize;
-        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32);
+        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32)
     }
-    fn write_sym(&self, bs: &mut Bitstream, sym: usize) {
-        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32);
+    fn write_sym(&self, bs: &mut Bitstream, sym: usize) -> bool {
+        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32)
     }
-    fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) {
+    fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
         let len_slot = self.get_length_slot(len);
-        self.write_sym(bs, 257 + len_slot);
+        if !self.write_sym(bs, 257 + len_slot) { return false; }
         let extra_bits = self.get_length_extra_bits(len_slot);
         if extra_bits > 0 {
-            bs.write_bits(
+            if !bs.write_bits(
                 (len - self.get_length_base(len_slot)) as u32,
                 extra_bits as u32,
-            );
+            ) { return false; }
         }
         let off_slot = self.get_offset_slot(offset);
-        bs.write_bits(
+        if !bs.write_bits(
             self.offset_codewords[off_slot],
             self.offset_lens[off_slot] as u32,
-        );
+        ) { return false; }
         let extra_bits = self.get_offset_extra_bits(off_slot);
         if extra_bits > 0 {
-            bs.write_bits(
+            if !bs.write_bits(
                 (offset - self.get_offset_base(off_slot)) as u32,
                 extra_bits as u32,
-            );
+            ) { return false; }
         }
+        true
     }
-
     fn get_length_slot(&self, len: usize) -> usize {
         if len <= 10 {
             len - 3

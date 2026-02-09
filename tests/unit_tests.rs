@@ -149,3 +149,22 @@ fn test_compress_bound_overflow_check() {
     let bound = compressor.gzip_compress_bound(size);
     assert!(bound >= size);
 }
+
+#[test]
+fn test_compress_deflate_insufficient_space() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let data = b"Hello world! This is a test string for deflate compression.";
+
+    // Create an output buffer that is too small for the compressed data
+    let mut output = vec![0u8; 5];
+
+    let result = compressor.compress_deflate_into(data, &mut output);
+
+    match result {
+        Ok(_) => panic!("Expected compression to fail due to insufficient space"),
+        Err(e) => {
+            assert_eq!(e.kind(), std::io::ErrorKind::Other);
+            assert_eq!(e.to_string(), "Insufficient space");
+        }
+    }
+}
