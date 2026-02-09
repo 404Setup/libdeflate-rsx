@@ -124,3 +124,23 @@ pub fn adler32(adler: u32, slice: &[u8]) -> u32 {
 
     adler32_generic(adler, slice)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adler32_large_chunks() {
+        // Test exact chunk boundary
+        let data_exact = vec![b'A'; MAX_CHUNK_LEN];
+        assert_eq!(adler32_generic(1, &data_exact), 2735505916, "Failed at exact chunk size");
+
+        // Test chunk boundary + 1
+        let data_plus_one = vec![b'A'; MAX_CHUNK_LEN + 1];
+        assert_eq!(adler32_generic(1, &data_plus_one), 626557501, "Failed at chunk size + 1");
+
+        // Test larger than chunk (multiple chunks)
+        // 6000 bytes > 5552 bytes
+        let data_large = vec![b'A'; 6000];
+        assert_eq!(adler32_generic(1, &data_large), 4027970492, "Failed at large size");
+    }
+}
