@@ -15,8 +15,9 @@ pub fn crc32_slice8(mut crc: u32, mut p: &[u8]) -> u32 {
         len -= 1;
     }
     while len >= 8 {
-        let v1 = u32::from_le(unsafe { std::ptr::read_unaligned(p.as_ptr() as *const u32) });
-        let v2 = u32::from_le(unsafe { std::ptr::read_unaligned(p.as_ptr().add(4) as *const u32) });
+        let v = u64::from_le(unsafe { std::ptr::read_unaligned(p.as_ptr() as *const u64) });
+        let v1 = v as u32;
+        let v2 = (v >> 32) as u32;
         crc = CRC32_SLICE8_TABLE[0x700 + ((crc ^ v1) as u8) as usize]
             ^ CRC32_SLICE8_TABLE[0x600 + (((crc ^ v1) >> 8) as u8) as usize]
             ^ CRC32_SLICE8_TABLE[0x500 + (((crc ^ v1) >> 16) as u8) as usize]
