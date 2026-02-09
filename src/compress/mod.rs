@@ -359,21 +359,19 @@ impl Compressor {
              let chunks: Vec<&[u8]> = input.chunks(chunk_size).collect();
              
              let compressed_chunks_res: Vec<io::Result<Vec<u8>>> = chunks.par_iter().enumerate().map_init(
-                  || (Compressor::new(self.compression_level), Vec::with_capacity(chunk_size + chunk_size / 2)),
-                  |(compressor, buf), (i, chunk)| {
+                  || Compressor::new(self.compression_level),
+                  |compressor, (i, chunk)| {
                        let is_last = i == chunks.len() - 1;
                        let mode = if is_last { flush_mode } else { FlushMode::Sync };
                        
                        let bound = Self::deflate_compress_bound(chunk.len());
-                       if buf.capacity() < bound {
-                           buf.reserve(bound - buf.len());
-                       }
+                       let mut buf = Vec::with_capacity(bound);
                        unsafe { buf.set_len(bound); }
                        
-                       let (res, size, _) = compressor.compress(chunk, buf, mode);
+                       let (res, size, _) = compressor.compress(chunk, &mut buf, mode);
                        if res == CompressResult::Success {
                            unsafe { buf.set_len(size); }
-                           Ok(buf.clone())
+                           Ok(buf)
                        } else {
                            Err(io::Error::new(io::ErrorKind::Other, "Compression failed"))
                        }
