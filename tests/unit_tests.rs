@@ -149,3 +149,28 @@ fn test_compress_bound_overflow_check() {
     let bound = compressor.gzip_compress_bound(size);
     assert!(bound >= size);
 }
+
+#[test]
+fn test_compress_zlib_into() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+    let data = b"Hello world! This is a test string for zlib compression into a buffer.";
+
+    // Test case 1: Successful compression
+    let bound = compressor.zlib_compress_bound(data.len());
+    let mut output = vec![0u8; bound];
+    let size = compressor.compress_zlib_into(data, &mut output).unwrap();
+
+    assert!(size > 0);
+    assert!(size <= bound);
+
+    // Verify valid zlib stream
+    let decompressed = decompressor.decompress_zlib(&output[..size], data.len()).unwrap();
+    assert_eq!(data.to_vec(), decompressed);
+
+    // Test case 2: Buffer too small
+    let mut small_output = vec![0u8; 10]; // Definitely too small
+    let result = compressor.compress_zlib_into(data, &mut small_output);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Other);
+}

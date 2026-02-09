@@ -3,6 +3,7 @@ pub struct Bitstream<'a> {
     pub out_idx: usize,
     pub bitbuf: u64,
     pub bitcount: u32,
+    pub failed: bool,
 }
 
 impl<'a> Bitstream<'a> {
@@ -12,11 +13,15 @@ impl<'a> Bitstream<'a> {
             out_idx: 0,
             bitbuf: 0,
             bitcount: 0,
+            failed: false,
         }
     }
 
     #[inline(always)]
     pub fn write_bits(&mut self, bits: u32, count: u32) -> bool {
+        if self.failed {
+            return false;
+        }
         if count == 0 {
             return true;
         }
@@ -47,6 +52,7 @@ impl<'a> Bitstream<'a> {
 
         while self.bitcount >= 8 {
             if self.out_idx >= self.output.len() {
+                self.failed = true;
                 return false;
             }
             unsafe {
@@ -60,9 +66,13 @@ impl<'a> Bitstream<'a> {
     }
 
     pub fn flush(&mut self) -> (bool, u32) {
+        if self.failed {
+            return (false, 0);
+        }
         let mut valid_bits = 0;
         if self.bitcount > 0 {
             if self.out_idx >= self.output.len() {
+                self.failed = true;
                 return (false, 0);
             }
 
