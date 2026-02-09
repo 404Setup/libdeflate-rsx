@@ -183,3 +183,18 @@ fn test_compress_gzip_into_insufficient_space() {
     let result = compressor.compress_gzip_into(data, &mut output);
     assert!(result.is_err());
 }
+
+#[test]
+fn test_new_compressor_invalid_level() {
+    let res = Compressor::new(-1);
+    assert!(res.is_err());
+    let err = res.err().unwrap();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(err.to_string(), "Compression level must be between 0 and 12");
+
+    let res = Compressor::new(13);
+    assert!(res.is_err());
+    let err = res.err().unwrap();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(err.to_string(), "Compression level must be between 0 and 12");
+}
