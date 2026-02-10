@@ -269,7 +269,7 @@ impl MatchFinder {
     where
         F: FnMut(usize, usize),
     {
-        if pos + 3 > data.len() {
+        if data.len().saturating_sub(pos) < 3 {
             return (0, 0);
         }
 
@@ -384,7 +384,7 @@ impl MatchFinder {
         unsafe { self.find_match_impl(data, pos, max_depth, |_, _| {}) }
     }
     pub fn skip_match(&mut self, data: &[u8], pos: usize) {
-        if pos + 3 > data.len() {
+        if data.len().saturating_sub(pos) < 3 {
             return;
         }
         unsafe {
@@ -452,7 +452,7 @@ impl HtMatchFinder {
     }
 
     pub fn find_match(&mut self, data: &[u8], pos: usize) -> (usize, usize) {
-        if pos + 3 > data.len() {
+        if data.len().saturating_sub(pos) < 3 {
             return (0, 0);
         }
 
@@ -509,7 +509,7 @@ impl HtMatchFinder {
     }
 
     pub fn skip_match(&mut self, data: &[u8], pos: usize) {
-        if pos + 3 > data.len() {
+        if data.len().saturating_sub(pos) < 3 {
             return;
         }
         unsafe {
@@ -565,7 +565,7 @@ impl BtMatchFinder {
     }
 
     pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
-        if pos + 4 > data.len() {
+        if data.len().saturating_sub(pos) < 4 {
             return (0, 0);
         }
 
@@ -699,7 +699,7 @@ impl BtMatchFinder {
         matches: &mut Vec<(u16, u16)>,
         record_matches: bool,
     ) {
-        if pos + 4 > data.len() {
+        if data.len().saturating_sub(pos) < 4 {
             return;
         }
 
@@ -862,5 +862,39 @@ mod tests {
             Some(&(10, 5)),
             "Last match should be best match"
         );
+    }
+
+    #[test]
+    fn test_match_finder_overflow() {
+        let data = b"abcde";
+        let max_depth = 10;
+
+        // Test MatchFinder
+        let mut mf = MatchFinder::new();
+        mf.prepare(data.len());
+        // Should not crash
+        let res = mf.find_match(data, usize::MAX, max_depth);
+        assert_eq!(res, (0, 0));
+        let res = mf.find_match(data, usize::MAX - 2, max_depth);
+        assert_eq!(res, (0, 0));
+        mf.skip_match(data, usize::MAX);
+
+        // Test HtMatchFinder
+        let mut mf_ht = HtMatchFinder::new();
+        mf_ht.prepare(data.len());
+        let res = mf_ht.find_match(data, usize::MAX);
+        assert_eq!(res, (0, 0));
+        let res = mf_ht.find_match(data, usize::MAX - 2);
+        assert_eq!(res, (0, 0));
+        mf_ht.skip_match(data, usize::MAX);
+
+        // Test BtMatchFinder
+        let mut mf_bt = BtMatchFinder::new();
+        mf_bt.prepare(data.len());
+        let res = mf_bt.find_match(data, usize::MAX, max_depth);
+        assert_eq!(res, (0, 0));
+        let res = mf_bt.find_match(data, usize::MAX - 3, max_depth);
+        assert_eq!(res, (0, 0));
+        mf_bt.skip_match(data, usize::MAX, max_depth);
     }
 }
