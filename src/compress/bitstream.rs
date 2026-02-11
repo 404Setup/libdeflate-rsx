@@ -20,11 +20,8 @@ impl<'a> Bitstream<'a> {
         if count == 0 {
             return true;
         }
-        let mask = if count == 32 {
-            0xFFFFFFFF
-        } else {
-            (1u32 << count) - 1
-        };
+        // Use u64 to handle count=32 case without branching (1u32 << 32 overflows)
+        let mask = ((1u64 << count) - 1) as u32;
 
         self.bitbuf |= ((bits & mask) as u64) << self.bitcount;
         self.bitcount += count;
