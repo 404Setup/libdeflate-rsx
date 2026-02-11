@@ -339,6 +339,60 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
         let mut v_s1_sums = _mm256_setzero_si256();
 
         let mut chunk_n = n;
+
+        // Optimization: Unrolled loop for larger chunks (128 bytes per iter).
+        // This breaks dependency chains and increases instruction level parallelism.
+        if chunk_n >= 2048 {
+            let mut ptr = data.as_ptr();
+            let mut v_s2_a = _mm256_setzero_si256();
+            let mut v_s2_b = _mm256_setzero_si256();
+            let v_zero = _mm256_setzero_si256();
+
+            while chunk_n >= 128 {
+                _mm_prefetch((ptr as usize + 128) as *const i8, _MM_HINT_T0);
+                _mm_prefetch((ptr as usize + 192) as *const i8, _MM_HINT_T0);
+
+                let d1 = _mm256_loadu_si256(ptr as *const __m256i);
+                let d2 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
+                let d3 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
+                let d4 = _mm256_loadu_si256(ptr.add(96) as *const __m256i);
+
+                // Calculate intermediate sums for s1 (u1..u4)
+                let u1 = _mm256_dpbusd_avx_epi32(v_zero, d1, ones);
+                let u2 = _mm256_dpbusd_avx_epi32(v_zero, d2, ones);
+                let u3 = _mm256_dpbusd_avx_epi32(v_zero, d3, ones);
+                let u4 = _mm256_dpbusd_avx_epi32(v_zero, d4, ones);
+
+                // Update s2 accumulators independently
+                v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, d1, mults);
+                v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, d2, mults);
+                v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, d3, mults);
+                v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, d4, mults);
+
+                // Update s1_sums
+                // formula: S_new = S_old + 4*v_s1 + 3*u1 + 2*u2 + 1*u3
+                let s1_x4 = _mm256_slli_epi32(v_s1, 2);
+                v_s1_sums = _mm256_add_epi32(v_s1_sums, s1_x4);
+
+                let u12 = _mm256_add_epi32(u1, u2);
+                let u12_x2 = _mm256_slli_epi32(u12, 1);
+                // inc = u1 + 2(u1+u2) + u3 = 3u1 + 2u2 + u3
+                let inc = _mm256_add_epi32(_mm256_add_epi32(u1, u12_x2), u3);
+                v_s1_sums = _mm256_add_epi32(v_s1_sums, inc);
+
+                // Update s1
+                let u34 = _mm256_add_epi32(u3, u4);
+                let total_u = _mm256_add_epi32(u12, u34);
+                v_s1 = _mm256_add_epi32(v_s1, total_u);
+
+                ptr = ptr.add(128);
+                chunk_n -= 128;
+            }
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_a, v_s2_b));
+            let processed = ptr as usize - data.as_ptr() as usize;
+            data = &data[processed..];
+        }
+
         while chunk_n >= 32 {
             let d = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
             v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
