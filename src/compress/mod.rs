@@ -472,198 +472,221 @@ impl Compressor {
         mf.prepare(input.len());
 
         while in_idx < input.len() {
-            let block_start = in_idx;
-            let processed;
-
-            if self.compression_level < 2 {
-                total_bits += 3;
-                processed = self.accumulate_greedy_frequencies(mf, input, in_idx, 0);
-                self.load_static_huffman_codes();
-                total_bits += self.calculate_block_data_size();
+            let (processed, bits) = if self.compression_level < 2 {
+                self.calculate_block_size_fast(mf, input, in_idx)
             } else if self.compression_level >= 10 {
-                total_bits += 3;
-                self.split_stats.reset();
-                let mut p = in_idx;
-                while p < input.len() {
-                    let block_len = p - block_start;
-                    if self
-                        .split_stats
-                        .should_end_block(block_len, input.len() - p)
-                    {
-                        break;
-                    }
-                    let (len, offset) = mf.find_match(input, p, self.max_search_depth);
-                    if len >= 3 {
-                        self.split_stats.observe_match(len, offset);
-                        p += len;
-                        for i in 1..len {
-                            mf.skip_match(input, p - len + i, self.max_search_depth);
-                        }
-                    } else {
-                        self.split_stats.observe_literal(input[p]);
-                        p += 1;
-                    }
-                }
-                processed = p - block_start;
-                let block_input = &input[block_start..block_start + processed];
-
-                self.sequences.clear();
-                let mut cur_in_idx = 0;
-                self.litlen_freqs.fill(0);
-                self.offset_freqs.fill(0);
-                mf.reset();
-
-                while cur_in_idx < block_input.len() {
-                    let (len, offset) =
-                        mf.find_match(block_input, cur_in_idx, self.max_search_depth);
-                    if len >= 3 {
-                        self.sequences.push(Sequence {
-                            litrunlen: 0,
-                            length: len as u16,
-                            offset: offset as u16,
-                        });
-                        self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
-                        self.offset_freqs[self.get_offset_slot(offset)] += 1;
-                        cur_in_idx += len;
-                        for i in 1..len {
-                            mf.skip_match(block_input, cur_in_idx - len + i, self.max_search_depth);
-                        }
-                    } else {
-                        self.litlen_freqs[block_input[cur_in_idx] as usize] += 1;
-                        cur_in_idx += 1;
-                    }
-                }
-                self.litlen_freqs[256] += 1;
-
-                make_huffman_code(
-                    DEFLATE_NUM_LITLEN_SYMS,
-                    MAX_LITLEN_CODEWORD_LEN,
-                    &self.litlen_freqs,
-                    &mut self.litlen_lens,
-                    &mut self.litlen_codewords,
-                );
-                make_huffman_code(
-                    DEFLATE_NUM_OFFSET_SYMS,
-                    MAX_OFFSET_CODEWORD_LEN,
-                    &self.offset_freqs,
-                    &mut self.offset_lens,
-                    &mut self.offset_codewords,
-                );
-
-                self.dp_nodes.clear();
-                self.dp_nodes.resize(
-                    processed + 1,
-                    DPNode {
-                        cost: 0x3FFFFFFF,
-                        length: 0,
-                        offset: 0,
-                    },
-                );
-                self.dp_nodes[0].cost = 0;
-
-                mf.reset();
-                let mut matches = Vec::new();
-                for pos in 0..processed {
-                    let cur_cost = self.dp_nodes[pos].cost;
-                    if cur_cost >= 0x3FFFFFFF {
-                        continue;
-                    }
-
-                    let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
-                    if cur_cost + lit_cost < self.dp_nodes[pos + 1].cost {
-                        self.dp_nodes[pos + 1] = DPNode {
-                            cost: cur_cost + lit_cost,
-                            length: 1,
-                            offset: 0,
-                        };
-                    }
-
-                    mf.find_matches(block_input, pos, self.max_search_depth, &mut matches);
-                    for &(len, offset) in &matches {
-                        let len = len as usize;
-                        if pos + len > processed {
-                            continue;
-                        }
-                        let cost = self.get_match_cost(len, offset as usize);
-                        if cur_cost + cost < self.dp_nodes[pos + len].cost {
-                            self.dp_nodes[pos + len] = DPNode {
-                                cost: cur_cost + cost,
-                                length: len as u16,
-                                offset,
-                            };
-                        }
-                    }
-                }
-
-                self.sequences.clear();
-                self.litlen_freqs.fill(0);
-                self.offset_freqs.fill(0);
-                self.litlen_freqs[256] = 1;
-
-                let mut pos = processed;
-                while pos > 0 {
-                    let node = self.dp_nodes[pos];
-                    if node.length == 1 {
-                        self.litlen_freqs[block_input[pos - 1] as usize] += 1;
-                    } else {
-                        self.litlen_freqs[257 + self.get_length_slot(node.length as usize)] += 1;
-                        self.offset_freqs[self.get_offset_slot(node.offset as usize)] += 1;
-                    }
-                    pos -= node.length as usize;
-                }
-
-                make_huffman_code(
-                    DEFLATE_NUM_LITLEN_SYMS,
-                    MAX_LITLEN_CODEWORD_LEN,
-                    &self.litlen_freqs,
-                    &mut self.litlen_lens,
-                    &mut self.litlen_codewords,
-                );
-                make_huffman_code(
-                    DEFLATE_NUM_OFFSET_SYMS,
-                    MAX_OFFSET_CODEWORD_LEN,
-                    &self.offset_freqs,
-                    &mut self.offset_lens,
-                    &mut self.offset_codewords,
-                );
-
-                total_bits += self.calculate_dynamic_header_size();
-                total_bits += self.calculate_block_data_size();
+                self.calculate_block_size_near_optimal(mf, input, in_idx)
             } else {
-                total_bits += 3;
-                let lazy_depth = if self.compression_level >= 8 {
-                    2
-                } else if self.compression_level >= 5 {
-                    1
-                } else {
-                    0
-                };
-                processed = self.decide_greedy_sequences(mf, input, in_idx, lazy_depth);
-
-                make_huffman_code(
-                    DEFLATE_NUM_LITLEN_SYMS,
-                    MAX_LITLEN_CODEWORD_LEN,
-                    &self.litlen_freqs,
-                    &mut self.litlen_lens,
-                    &mut self.litlen_codewords,
-                );
-                make_huffman_code(
-                    DEFLATE_NUM_OFFSET_SYMS,
-                    MAX_OFFSET_CODEWORD_LEN,
-                    &self.offset_freqs,
-                    &mut self.offset_lens,
-                    &mut self.offset_codewords,
-                );
-
-                total_bits += self.calculate_dynamic_header_size();
-                total_bits += self.calculate_block_data_size();
-            }
+                self.calculate_block_size_greedy_lazy(mf, input, in_idx)
+            };
 
             in_idx += processed;
+            total_bits += bits;
         }
 
         mf.advance(input.len());
         (total_bits + 7) / 8
+    }
+
+    fn calculate_block_size_fast<T: MatchFinderTrait>(
+        &mut self,
+        mf: &mut T,
+        input: &[u8],
+        in_idx: usize,
+    ) -> (usize, usize) {
+        let processed = self.accumulate_greedy_frequencies(mf, input, in_idx, 0);
+        self.load_static_huffman_codes();
+        let bits = 3 + self.calculate_block_data_size();
+        (processed, bits)
+    }
+
+    fn calculate_block_size_greedy_lazy<T: MatchFinderTrait>(
+        &mut self,
+        mf: &mut T,
+        input: &[u8],
+        in_idx: usize,
+    ) -> (usize, usize) {
+        let lazy_depth = if self.compression_level >= 8 {
+            2
+        } else if self.compression_level >= 5 {
+            1
+        } else {
+            0
+        };
+        let processed = self.decide_greedy_sequences(mf, input, in_idx, lazy_depth);
+
+        make_huffman_code(
+            DEFLATE_NUM_LITLEN_SYMS,
+            MAX_LITLEN_CODEWORD_LEN,
+            &self.litlen_freqs,
+            &mut self.litlen_lens,
+            &mut self.litlen_codewords,
+        );
+        make_huffman_code(
+            DEFLATE_NUM_OFFSET_SYMS,
+            MAX_OFFSET_CODEWORD_LEN,
+            &self.offset_freqs,
+            &mut self.offset_lens,
+            &mut self.offset_codewords,
+        );
+
+        let bits = 3 + self.calculate_dynamic_header_size() + self.calculate_block_data_size();
+        (processed, bits)
+    }
+
+    fn calculate_block_size_near_optimal<T: MatchFinderTrait>(
+        &mut self,
+        mf: &mut T,
+        input: &[u8],
+        in_idx: usize,
+    ) -> (usize, usize) {
+        self.split_stats.reset();
+        let mut p = in_idx;
+        while p < input.len() {
+            let block_len = p - in_idx;
+            if self
+                .split_stats
+                .should_end_block(block_len, input.len() - p)
+            {
+                break;
+            }
+            let (len, offset) = mf.find_match(input, p, self.max_search_depth);
+            if len >= 3 {
+                self.split_stats.observe_match(len, offset);
+                p += len;
+                for i in 1..len {
+                    mf.skip_match(input, p - len + i, self.max_search_depth);
+                }
+            } else {
+                self.split_stats.observe_literal(input[p]);
+                p += 1;
+            }
+        }
+        let processed = p - in_idx;
+        let block_input = &input[in_idx..in_idx + processed];
+
+        self.sequences.clear();
+        let mut cur_in_idx = 0;
+        self.litlen_freqs.fill(0);
+        self.offset_freqs.fill(0);
+        mf.reset();
+
+        while cur_in_idx < block_input.len() {
+            let (len, offset) =
+                mf.find_match(block_input, cur_in_idx, self.max_search_depth);
+            if len >= 3 {
+                self.sequences.push(Sequence {
+                    litrunlen: 0,
+                    length: len as u16,
+                    offset: offset as u16,
+                });
+                self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
+                self.offset_freqs[self.get_offset_slot(offset)] += 1;
+                cur_in_idx += len;
+                for i in 1..len {
+                    mf.skip_match(block_input, cur_in_idx - len + i, self.max_search_depth);
+                }
+            } else {
+                self.litlen_freqs[block_input[cur_in_idx] as usize] += 1;
+                cur_in_idx += 1;
+            }
+        }
+        self.litlen_freqs[256] += 1;
+
+        make_huffman_code(
+            DEFLATE_NUM_LITLEN_SYMS,
+            MAX_LITLEN_CODEWORD_LEN,
+            &self.litlen_freqs,
+            &mut self.litlen_lens,
+            &mut self.litlen_codewords,
+        );
+        make_huffman_code(
+            DEFLATE_NUM_OFFSET_SYMS,
+            MAX_OFFSET_CODEWORD_LEN,
+            &self.offset_freqs,
+            &mut self.offset_lens,
+            &mut self.offset_codewords,
+        );
+
+        self.dp_nodes.clear();
+        self.dp_nodes.resize(
+            processed + 1,
+            DPNode {
+                cost: 0x3FFFFFFF,
+                length: 0,
+                offset: 0,
+            },
+        );
+        self.dp_nodes[0].cost = 0;
+
+        mf.reset();
+        let mut matches = Vec::new();
+        for pos in 0..processed {
+            let cur_cost = self.dp_nodes[pos].cost;
+            if cur_cost >= 0x3FFFFFFF {
+                continue;
+            }
+
+            let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
+            if cur_cost + lit_cost < self.dp_nodes[pos + 1].cost {
+                self.dp_nodes[pos + 1] = DPNode {
+                    cost: cur_cost + lit_cost,
+                    length: 1,
+                    offset: 0,
+                };
+            }
+
+            mf.find_matches(block_input, pos, self.max_search_depth, &mut matches);
+            for &(len, offset) in &matches {
+                let len = len as usize;
+                if pos + len > processed {
+                    continue;
+                }
+                let cost = self.get_match_cost(len, offset as usize);
+                if cur_cost + cost < self.dp_nodes[pos + len].cost {
+                    self.dp_nodes[pos + len] = DPNode {
+                        cost: cur_cost + cost,
+                        length: len as u16,
+                        offset,
+                    };
+                }
+            }
+        }
+
+        self.sequences.clear();
+        self.litlen_freqs.fill(0);
+        self.offset_freqs.fill(0);
+        self.litlen_freqs[256] = 1;
+
+        let mut pos = processed;
+        while pos > 0 {
+            let node = self.dp_nodes[pos];
+            if node.length == 1 {
+                self.litlen_freqs[block_input[pos - 1] as usize] += 1;
+            } else {
+                self.litlen_freqs[257 + self.get_length_slot(node.length as usize)] += 1;
+                self.offset_freqs[self.get_offset_slot(node.offset as usize)] += 1;
+            }
+            pos -= node.length as usize;
+        }
+
+        make_huffman_code(
+            DEFLATE_NUM_LITLEN_SYMS,
+            MAX_LITLEN_CODEWORD_LEN,
+            &self.litlen_freqs,
+            &mut self.litlen_lens,
+            &mut self.litlen_codewords,
+        );
+        make_huffman_code(
+            DEFLATE_NUM_OFFSET_SYMS,
+            MAX_OFFSET_CODEWORD_LEN,
+            &self.offset_freqs,
+            &mut self.offset_lens,
+            &mut self.offset_codewords,
+        );
+
+        let bits = 3 + self.calculate_dynamic_header_size() + self.calculate_block_data_size();
+        (processed, bits)
     }
 
     pub fn compress_to_size(&mut self, input: &[u8], final_block: bool) -> usize {
