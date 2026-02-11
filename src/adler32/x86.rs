@@ -91,7 +91,10 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
 pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
     let mut s2 = adler >> 16;
-    let mut data = p;
+
+    // Manual pointer tracking to avoid slice overhead in hot loop
+    let mut ptr = p.as_ptr();
+    let mut len = p.len();
 
     let weights = _mm256_set_epi8(
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -99,11 +102,11 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     );
     let ones_i16 = _mm256_set1_epi16(1);
 
-    while data.len() >= 64 {
-        let mut n = std::cmp::min(data.len(), 5552);
-        n &= !63;
+    while len >= 64 {
+        let n = std::cmp::min(len, 5552);
+        let n_rounded = n & !63;
 
-        s2 += s1 * (n as u32);
+        s2 += s1 * (n_rounded as u32);
 
         let mut v_s1 = _mm256_setzero_si256();
         let mut v_s1_acc = _mm256_setzero_si256();
@@ -111,7 +114,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
 
         let v_zero = _mm256_setzero_si256();
 
-        let mut chunk_n = n;
+        let mut chunk_n = n_rounded;
 
         let mut v_s2_a = _mm256_setzero_si256();
         let mut v_s2_b = _mm256_setzero_si256();
@@ -119,10 +122,10 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_d = _mm256_setzero_si256();
 
         while chunk_n >= 128 {
-            let data_a_1 = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
-            let data_b_1 = _mm256_loadu_si256(data.as_ptr().add(32) as *const __m256i);
-            let data_a_2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const __m256i);
-            let data_b_2 = _mm256_loadu_si256(data.as_ptr().add(96) as *const __m256i);
+            let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
+            let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
+            let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
+            let data_b_2 = _mm256_loadu_si256(ptr.add(96) as *const __m256i);
 
             let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
             let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
@@ -158,8 +161,9 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let s_d = _mm256_madd_epi16(p4, ones_i16);
             v_s2_d = _mm256_add_epi32(v_s2_d, s_d);
 
-            data = &data[128..];
+            ptr = ptr.add(128);
             chunk_n -= 128;
+            len -= 128;
         }
 
         let mut v_s2 = _mm256_add_epi32(
@@ -172,8 +176,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s1_sums = _mm256_add_epi32(v_s1_shifted, v_inc_shifted);
 
         while chunk_n >= 64 {
-            let data_a = _mm256_loadu_si256(data.as_ptr() as *const __m256i);
-            let data_b = _mm256_loadu_si256(data.as_ptr().add(32) as *const __m256i);
+            let data_a = _mm256_loadu_si256(ptr as *const __m256i);
+            let data_b = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
 
             v_s1_sums = _mm256_add_epi32(v_s1_sums, _mm256_slli_epi32(v_s1, 5));
             let p1 = _mm256_maddubs_epi16(data_a, weights);
@@ -187,8 +191,9 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let s_b = _mm256_madd_epi16(p2, ones_i16);
             v_s2 = _mm256_add_epi32(v_s2, s_b);
 
-            data = &data[64..];
+            ptr = ptr.add(64);
             chunk_n -= 64;
+            len -= 64;
         }
 
         v_s2 = _mm256_add_epi32(v_s2, v_s1_sums);
@@ -214,12 +219,13 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if data.len() >= 16 {
-        let res = adler32_x86_sse2((s2 << 16) | s1, data);
+    let remaining = core::slice::from_raw_parts(ptr, len);
+    if remaining.len() >= 16 {
+        let res = adler32_x86_sse2((s2 << 16) | s1, remaining);
         s1 = res & 0xFFFF;
         s2 = res >> 16;
     } else {
-        for &b in data {
+        for &b in remaining {
             s1 += b as u32;
             s2 += s1;
         }
