@@ -10,6 +10,7 @@ use crate::common::*;
 use rayon::prelude::*;
 use std::cmp::min;
 use std::io;
+use std::mem::MaybeUninit;
 
 const LENGTH_SLOT_TABLE: [u8; 260] = [
     0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 13, 13,
@@ -394,10 +395,10 @@ impl Compressor {
                 mf.advance(input.len());
                 return (CompressResult::InsufficientSpace, 0, 0);
             }
-            bs.output[bs.out_idx] = 0;
-            bs.output[bs.out_idx + 1] = 0;
-            bs.output[bs.out_idx + 2] = 0xFF;
-            bs.output[bs.out_idx + 3] = 0xFF;
+            bs.output[bs.out_idx].write(0);
+            bs.output[bs.out_idx + 1].write(0);
+            bs.output[bs.out_idx + 2].write(0xFF);
+            bs.output[bs.out_idx + 3].write(0xFF);
             bs.out_idx += 4;
         }
 
@@ -414,7 +415,7 @@ impl Compressor {
     pub fn compress(
         &mut self,
         input: &[u8],
-        output: &mut [u8],
+        output: &mut [MaybeUninit<u8>],
         flush_mode: FlushMode,
     ) -> (CompressResult, usize, u32) {
         if input.len() > 256 * 1024 {
@@ -443,7 +444,14 @@ impl Compressor {
                             buf.set_len(bound);
                         }
 
-                        let (res, size, _) = compressor.compress(chunk, buf, mode);
+                        let buf_uninit = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                buf.as_mut_ptr() as *mut MaybeUninit<u8>,
+                                buf.len(),
+                            )
+                        };
+
+                        let (res, size, _) = compressor.compress(chunk, buf_uninit, mode);
                         if res == CompressResult::Success {
                             unsafe {
                                 buf.set_len(size);
@@ -451,7 +459,10 @@ impl Compressor {
                             if size < buf.capacity() / 2 {
                                 Ok(buf.to_vec())
                             } else {
-                                Ok(std::mem::replace(buf, Vec::with_capacity(chunk_size + chunk_size / 2)))
+                                Ok(std::mem::replace(
+                                    buf,
+                                    Vec::with_capacity(chunk_size + chunk_size / 2),
+                                ))
                             }
                         } else {
                             Err(io::Error::new(io::ErrorKind::Other, "Compression failed"))
@@ -467,7 +478,13 @@ impl Compressor {
                         if out_idx + data.len() > output.len() {
                             return (CompressResult::InsufficientSpace, 0, 0);
                         }
-                        output[out_idx..out_idx + data.len()].copy_from_slice(&data);
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                data.as_ptr(),
+                                output.as_mut_ptr().add(out_idx) as *mut u8,
+                                data.len(),
+                            );
+                        }
                         out_idx += data.len();
                     }
                     Err(_) => return (CompressResult::InsufficientSpace, 0, 0),
@@ -1037,7 +1054,7 @@ impl Compressor {
     fn compress_uncompressed(
         &mut self,
         input: &[u8],
-        output: &mut [u8],
+        output: &mut [MaybeUninit<u8>],
         flush_mode: FlushMode,
     ) -> (CompressResult, usize, u32) {
         let mut bs = Bitstream::new(output);
@@ -1061,11 +1078,26 @@ impl Compressor {
             }
             let len = block_len as u16;
             let nlen = !len;
-            bs.output[bs.out_idx..bs.out_idx + 2].copy_from_slice(&len.to_le_bytes());
-            bs.output[bs.out_idx + 2..bs.out_idx + 4].copy_from_slice(&nlen.to_le_bytes());
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    len.to_le_bytes().as_ptr(),
+                    bs.output.as_mut_ptr().add(bs.out_idx) as *mut u8,
+                    2,
+                );
+                std::ptr::copy_nonoverlapping(
+                    nlen.to_le_bytes().as_ptr(),
+                    bs.output.as_mut_ptr().add(bs.out_idx + 2) as *mut u8,
+                    2,
+                );
+            }
             bs.out_idx += 4;
-            bs.output[bs.out_idx..bs.out_idx + block_len]
-                .copy_from_slice(&input[in_idx..in_idx + block_len]);
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    input.as_ptr().add(in_idx),
+                    bs.output.as_mut_ptr().add(bs.out_idx) as *mut u8,
+                    block_len,
+                );
+            }
             bs.out_idx += block_len;
             in_idx += block_len;
         }
@@ -1073,12 +1105,12 @@ impl Compressor {
             if bs.out_idx + 5 > bs.output.len() {
                 return (CompressResult::InsufficientSpace, 0, 0);
             }
-            bs.output[bs.out_idx] = 0;
+            bs.output[bs.out_idx].write(0);
             bs.out_idx += 1;
-            bs.output[bs.out_idx] = 0;
-            bs.output[bs.out_idx + 1] = 0;
-            bs.output[bs.out_idx + 2] = 0xFF;
-            bs.output[bs.out_idx + 3] = 0xFF;
+            bs.output[bs.out_idx].write(0);
+            bs.output[bs.out_idx + 1].write(0);
+            bs.output[bs.out_idx + 2].write(0xFF);
+            bs.output[bs.out_idx + 3].write(0xFF);
             bs.out_idx += 4;
         }
 
@@ -1643,7 +1675,11 @@ impl Compressor {
         GZIP_MIN_OVERHEAD.saturating_add(Self::deflate_compress_bound(size))
     }
 
-    pub fn compress_zlib(&mut self, input: &[u8], output: &mut [u8]) -> (CompressResult, usize) {
+    pub fn compress_zlib(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+    ) -> (CompressResult, usize) {
         if output.len() < ZLIB_MIN_OVERHEAD {
             return (CompressResult::InsufficientSpace, 0);
         }
@@ -1661,7 +1697,13 @@ impl Compressor {
         };
         hdr |= (level_hint as u16) << 6;
         hdr |= 31 - (hdr % 31);
-        output[0..2].copy_from_slice(&hdr.to_be_bytes());
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                hdr.to_be_bytes().as_ptr(),
+                output.as_mut_ptr().add(0) as *mut u8,
+                2,
+            );
+        }
         out_idx += 2;
         let out_len = output.len();
         let (res, deflate_size, _) = self.compress(
@@ -1674,29 +1716,45 @@ impl Compressor {
         }
         out_idx += deflate_size;
         let adler = crate::adler32::adler32(1, input);
-        output[out_idx..out_idx + 4].copy_from_slice(&adler.to_be_bytes());
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                adler.to_be_bytes().as_ptr(),
+                output.as_mut_ptr().add(out_idx) as *mut u8,
+                4,
+            );
+        }
         out_idx += 4;
         (CompressResult::Success, out_idx)
     }
 
-    pub fn compress_gzip(&mut self, input: &[u8], output: &mut [u8]) -> (CompressResult, usize) {
+    pub fn compress_gzip(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+    ) -> (CompressResult, usize) {
         if output.len() < GZIP_MIN_OVERHEAD {
             return (CompressResult::InsufficientSpace, 0);
         }
         let mut out_idx = 0;
-        output[0] = GZIP_ID1;
-        output[1] = GZIP_ID2;
-        output[2] = GZIP_CM_DEFLATE;
-        output[3] = 0;
-        output[4..8].copy_from_slice(&GZIP_MTIME_UNAVAILABLE.to_le_bytes());
+        output[0].write(GZIP_ID1);
+        output[1].write(GZIP_ID2);
+        output[2].write(GZIP_CM_DEFLATE);
+        output[3].write(0);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                GZIP_MTIME_UNAVAILABLE.to_le_bytes().as_ptr(),
+                output.as_mut_ptr().add(4) as *mut u8,
+                4,
+            );
+        }
         let mut xfl = 0u8;
         if self.compression_level < 2 {
             xfl |= GZIP_XFL_FASTEST_COMPRESSION;
         } else if self.compression_level >= 8 {
             xfl |= GZIP_XFL_SLOWEST_COMPRESSION;
         }
-        output[8] = xfl;
-        output[9] = GZIP_OS_UNKNOWN;
+        output[8].write(xfl);
+        output[9].write(GZIP_OS_UNKNOWN);
         out_idx += 10;
         let out_len = output.len();
         let (res, deflate_size, _) = self.compress(
@@ -1709,9 +1767,21 @@ impl Compressor {
         }
         out_idx += deflate_size;
         let crc = crate::crc32::crc32(0, input);
-        output[out_idx..out_idx + 4].copy_from_slice(&crc.to_le_bytes());
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                crc.to_le_bytes().as_ptr(),
+                output.as_mut_ptr().add(out_idx) as *mut u8,
+                4,
+            );
+        }
         out_idx += 4;
-        output[out_idx..out_idx + 4].copy_from_slice(&(input.len() as u32).to_le_bytes());
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                (input.len() as u32).to_le_bytes().as_ptr(),
+                output.as_mut_ptr().add(out_idx) as *mut u8,
+                4,
+            );
+        }
         out_idx += 4;
         (CompressResult::Success, out_idx)
     }

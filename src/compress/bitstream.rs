@@ -1,12 +1,14 @@
+use std::mem::MaybeUninit;
+
 pub struct Bitstream<'a> {
-    pub output: &'a mut [u8],
+    pub output: &'a mut [MaybeUninit<u8>],
     pub out_idx: usize,
     pub bitbuf: u64,
     pub bitcount: u32,
 }
 
 impl<'a> Bitstream<'a> {
-    pub fn new(output: &'a mut [u8]) -> Self {
+    pub fn new(output: &'a mut [MaybeUninit<u8>]) -> Self {
         Self {
             output,
             out_idx: 0,
@@ -47,7 +49,9 @@ impl<'a> Bitstream<'a> {
                 return false;
             }
             unsafe {
-                *self.output.get_unchecked_mut(self.out_idx) = (self.bitbuf & 0xFF) as u8;
+                self.output
+                    .get_unchecked_mut(self.out_idx)
+                    .write((self.bitbuf & 0xFF) as u8);
             }
             self.out_idx += 1;
             self.bitbuf >>= 8;
@@ -63,7 +67,7 @@ impl<'a> Bitstream<'a> {
                 return (false, 0);
             }
 
-            self.output[self.out_idx] = (self.bitbuf & 0xFF) as u8;
+            self.output[self.out_idx].write((self.bitbuf & 0xFF) as u8);
             self.out_idx += 1;
             valid_bits = self.bitcount;
             self.bitbuf = 0;

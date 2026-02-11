@@ -76,10 +76,20 @@ impl Compressor {
 
     fn compress_helper<F>(&mut self, data: &[u8], bound: usize, f: F) -> io::Result<Vec<u8>>
     where
-        F: FnOnce(&mut InternalCompressor, &[u8], &mut [u8]) -> (CompressResult, usize),
+        F: FnOnce(
+            &mut InternalCompressor,
+            &[u8],
+            &mut [std::mem::MaybeUninit<u8>],
+        ) -> (CompressResult, usize),
     {
         let mut output = vec![0u8; bound];
-        let (res, size) = f(&mut self.inner, data, &mut output);
+        let out_uninit = unsafe {
+            std::slice::from_raw_parts_mut(
+                output.as_mut_ptr() as *mut std::mem::MaybeUninit<u8>,
+                output.len(),
+            )
+        };
+        let (res, size) = f(&mut self.inner, data, out_uninit);
         match res {
             CompressResult::Success => {
                 output.truncate(size);
@@ -99,9 +109,19 @@ impl Compressor {
         f: F,
     ) -> io::Result<usize>
     where
-        F: FnOnce(&mut InternalCompressor, &[u8], &mut [u8]) -> (CompressResult, usize),
+        F: FnOnce(
+            &mut InternalCompressor,
+            &[u8],
+            &mut [std::mem::MaybeUninit<u8>],
+        ) -> (CompressResult, usize),
     {
-        let (res, size) = f(&mut self.inner, data, output);
+        let out_uninit = unsafe {
+            std::slice::from_raw_parts_mut(
+                output.as_mut_ptr() as *mut std::mem::MaybeUninit<u8>,
+                output.len(),
+            )
+        };
+        let (res, size) = f(&mut self.inner, data, out_uninit);
         if res == CompressResult::Success {
             Ok(size)
         } else {
