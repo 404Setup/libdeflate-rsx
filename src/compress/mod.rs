@@ -11,6 +11,39 @@ use rayon::prelude::*;
 use std::cmp::min;
 use std::io;
 
+const LENGTH_SLOT_TABLE: [u8; 260] = [
+    0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 13, 13,
+    14, 14, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 17, 17, 17, 17, 17,
+    18, 18, 18, 18, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20,
+    20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
+    22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 23,
+    23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24,
+    24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25,
+    25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25,
+    26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+    26, 26, 26, 26, 26, 26, 26, 26, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+    27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 28
+];
+
+const LENGTH_BASE_TABLE: [u16; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+];
+
+const LENGTH_EXTRA_BITS_TABLE: [u8; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+
+const OFFSET_BASE_TABLE: [u32; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+
+const OFFSET_EXTRA_BITS_TABLE: [u8; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+];
+
 pub const MAX_LITLEN_CODEWORD_LEN: usize = 14;
 pub const MAX_OFFSET_CODEWORD_LEN: usize = 15;
 pub const MAX_PRE_CODEWORD_LEN: usize = 7;
@@ -1533,62 +1566,13 @@ impl Compressor {
     }
 
     fn get_length_slot(&self, len: usize) -> usize {
-        if len <= 10 {
-            len - 3
-        } else if len <= 12 {
-            8
-        } else if len <= 14 {
-            9
-        } else if len <= 16 {
-            10
-        } else if len <= 18 {
-            11
-        } else if len <= 22 {
-            12
-        } else if len <= 26 {
-            13
-        } else if len <= 30 {
-            14
-        } else if len <= 34 {
-            15
-        } else if len <= 42 {
-            16
-        } else if len <= 50 {
-            17
-        } else if len <= 58 {
-            18
-        } else if len <= 66 {
-            19
-        } else if len <= 82 {
-            20
-        } else if len <= 98 {
-            21
-        } else if len <= 114 {
-            22
-        } else if len <= 130 {
-            23
-        } else if len <= 162 {
-            24
-        } else if len <= 194 {
-            25
-        } else if len <= 226 {
-            26
-        } else if len <= 257 {
-            27
-        } else {
-            28
-        }
+        LENGTH_SLOT_TABLE[len] as usize
     }
     fn get_length_base(&self, slot: usize) -> usize {
-        [
-            3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99,
-            115, 131, 163, 195, 227, 258,
-        ][slot]
+        LENGTH_BASE_TABLE[slot] as usize
     }
     fn get_length_extra_bits(&self, slot: usize) -> usize {
-        [
-            0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
-        ][slot]
+        LENGTH_EXTRA_BITS_TABLE[slot] as usize
     }
     fn get_offset_slot(&self, offset: usize) -> usize {
         if offset <= 4 {
@@ -1604,16 +1588,10 @@ impl Compressor {
         }
     }
     fn get_offset_base(&self, slot: usize) -> usize {
-        [
-            1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025,
-            1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
-        ][slot]
+        OFFSET_BASE_TABLE[slot] as usize
     }
     fn get_offset_extra_bits(&self, slot: usize) -> usize {
-        [
-            0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12,
-            12, 13, 13,
-        ][slot]
+        OFFSET_EXTRA_BITS_TABLE[slot] as usize
     }
     fn get_match_cost(&self, len: usize, offset: usize) -> u32 {
         let len_slot = self.get_length_slot(len);
