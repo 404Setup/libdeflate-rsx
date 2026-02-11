@@ -125,6 +125,12 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_b = _mm256_setzero_si256();
 
         while chunk_n >= 128 {
+            // Prefetch data 2 iterations (256 bytes) ahead to hide memory latency.
+            // This is critical for large buffers where throughput is memory-bound.
+            // We use usize arithmetic to avoid UB with `ptr.add` when prefetching beyond the buffer end.
+            _mm_prefetch((ptr as usize + 256) as *const i8, _MM_HINT_T0);
+            _mm_prefetch((ptr as usize + 320) as *const i8, _MM_HINT_T0);
+
             let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
             let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
             let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
