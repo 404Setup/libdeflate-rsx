@@ -3,6 +3,7 @@ use crate::decompress::{DecompressResult, Decompressor, DecompressorState};
 use rayon::prelude::*;
 use std::cmp::min;
 use std::io::{self, Read, Write};
+use std::mem::MaybeUninit;
 
 /// A streaming encoder that compresses data using the DEFLATE algorithm.
 ///
@@ -57,7 +58,13 @@ impl<W: Write + Send> DeflateEncoder<W> {
                         } else {
                             crate::compress::FlushMode::Sync
                         };
-                        let (res, size, _) = compressor.compress(chunk, &mut output, mode);
+                        let out_uninit = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output.as_mut_ptr() as *mut MaybeUninit<u8>,
+                                output.len(),
+                            )
+                        };
+                        let (res, size, _) = compressor.compress(chunk, out_uninit, mode);
                         if res == CompressResult::Success {
                             output.truncate(size);
                             Ok(output)
@@ -83,7 +90,13 @@ impl<W: Write + Send> DeflateEncoder<W> {
             } else {
                 crate::compress::FlushMode::Sync
             };
-            let (res, size, _) = compressor.compress(&self.buffer, &mut output, mode);
+            let out_uninit = unsafe {
+                std::slice::from_raw_parts_mut(
+                    output.as_mut_ptr() as *mut MaybeUninit<u8>,
+                    output.len(),
+                )
+            };
+            let (res, size, _) = compressor.compress(&self.buffer, out_uninit, mode);
             if res == CompressResult::Success {
                 if let Some(writer) = &mut self.writer {
                     writer.write_all(&output[..size])?;
