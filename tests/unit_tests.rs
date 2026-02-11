@@ -198,3 +198,15 @@ fn test_new_compressor_invalid_level() {
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(err.to_string(), "Compression level must be between 0 and 12");
 }
+
+#[test]
+fn test_compress_insufficient_space_panic_prevention() {
+    let mut compressor = Compressor::new(1).unwrap();
+    let data = vec![0u8; 10000]; // Highly compressible
+    let mut output = vec![0u8; 1]; // Extremely small, triggers bitstream overflow path if not handled
+
+    // This should return InsufficientSpace, not panic
+    let res = compressor.compress_deflate_into(&data, &mut output);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::Other);
+}
