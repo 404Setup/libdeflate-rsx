@@ -128,19 +128,18 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
             let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
 
-            let v_s1_x4 = _mm256_slli_epi32(v_s1, 2);
-            let sad1_x2 = _mm256_slli_epi32(sad1, 1);
-            let sad1_x3 = _mm256_add_epi32(sad1_x2, sad1);
-            let sad2_x2 = _mm256_slli_epi32(sad2, 1);
+            let s12 = _mm256_add_epi32(sad1, sad2);
+            let s34 = _mm256_add_epi32(sad3, sad4);
+            let sum_sads = _mm256_add_epi32(s12, s34);
 
-            let sum_part1 = _mm256_add_epi32(v_s1_x4, sad1_x3);
-            let sum_part2 = _mm256_add_epi32(sad2_x2, sad3);
-            let total_inc = _mm256_add_epi32(sum_part1, sum_part2);
+            let v_s1_x4 = _mm256_slli_epi32(v_s1, 2);
+            let s12_x2 = _mm256_slli_epi32(s12, 1);
+
+            // total_inc = 4*v_s1 + 2*(s1+s2) + s1 + s3
+            let inc_part = _mm256_add_epi32(_mm256_add_epi32(s12_x2, sad1), sad3);
+            let total_inc = _mm256_add_epi32(v_s1_x4, inc_part);
 
             v_s1_sums = _mm256_add_epi32(v_s1_sums, total_inc);
-
-            let sum_sads =
-                _mm256_add_epi32(_mm256_add_epi32(sad1, sad2), _mm256_add_epi32(sad3, sad4));
             v_s1 = _mm256_add_epi32(v_s1, sum_sads);
 
             let p1 = _mm256_maddubs_epi16(data_a_1, weights);
