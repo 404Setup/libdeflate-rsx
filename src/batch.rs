@@ -19,16 +19,11 @@ impl BatchCompressor {
                 |(compressor, buffer), &input| {
                     let bound = Compressor::deflate_compress_bound(input.len());
                     buffer.clear();
-                    buffer.reserve(bound);
-                    unsafe {
-                        buffer.set_len(bound);
-                    }
+                    buffer.resize(bound, 0);
                     let (res, size, _) =
                         compressor.compress(input, buffer, crate::compress::FlushMode::Finish);
                     if res == CompressResult::Success {
-                        unsafe {
-                            buffer.set_len(size);
-                        }
+                        buffer.truncate(size);
                         buffer.to_vec()
                     } else {
                         Vec::new()

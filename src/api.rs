@@ -78,16 +78,11 @@ impl Compressor {
     where
         F: FnOnce(&mut InternalCompressor, &[u8], &mut [u8]) -> (CompressResult, usize),
     {
-        let mut output = Vec::with_capacity(bound);
-        unsafe {
-            output.set_len(bound);
-        }
+        let mut output = vec![0u8; bound];
         let (res, size) = f(&mut self.inner, data, &mut output);
         match res {
             CompressResult::Success => {
-                unsafe {
-                    output.set_len(size);
-                }
+                output.truncate(size);
                 Ok(output)
             }
             CompressResult::InsufficientSpace => {
@@ -167,10 +162,7 @@ impl Decompressor {
             &mut [u8],
         ) -> (crate::decompress::DecompressResult, usize, usize),
     {
-        let mut output = Vec::with_capacity(expected_size);
-        unsafe {
-            output.set_len(expected_size);
-        }
+        let mut output = vec![0u8; expected_size];
         let (res, _, size) = f(&mut self.inner, data, &mut output);
         if res == crate::decompress::DecompressResult::Success {
             output.truncate(size);
