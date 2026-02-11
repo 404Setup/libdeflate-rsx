@@ -249,6 +249,47 @@ fn bench_batch(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_parallel_alloc(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Parallel Alloc");
+    let level = 1;
+
+    // Case 1: Compressible data (data_L.bin)
+    let path = "bench_data/data_L.bin";
+    if Path::new(path).exists() {
+        let data = read_file(path);
+        let size = data.len();
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input("Compress Parallel Compressible", &size, |b, &_size| {
+            let mut compressor = Compressor::new(level).unwrap();
+            let bound = compressor.deflate_compress_bound(size);
+            let mut out_buf = vec![0u8; bound];
+            b.iter(|| {
+                 compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+            });
+        });
+    }
+
+    // Case 2: Incompressible data (data_random_L.bin)
+    let path_random = "bench_data/data_random_L.bin";
+    if Path::new(path_random).exists() {
+        let data = read_file(path_random);
+        let size = data.len();
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input("Compress Parallel Incompressible", &size, |b, &_size| {
+            let mut compressor = Compressor::new(level).unwrap();
+            let bound = compressor.deflate_compress_bound(size);
+            let mut out_buf = vec![0u8; bound];
+            b.iter(|| {
+                 compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_crc32_slice8,
@@ -257,5 +298,6 @@ criterion_group!(
     bench_decompress,
     bench_stream,
     bench_batch,
+    bench_parallel_alloc,
 );
 criterion_main!(benches);
