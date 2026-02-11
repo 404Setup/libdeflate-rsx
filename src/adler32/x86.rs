@@ -129,16 +129,15 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
 
             let v_s1_x4 = _mm256_slli_epi32(v_s1, 2);
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1_x4);
-
             let sad1_x2 = _mm256_slli_epi32(sad1, 1);
             let sad1_x3 = _mm256_add_epi32(sad1_x2, sad1);
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad1_x3);
-
             let sad2_x2 = _mm256_slli_epi32(sad2, 1);
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad2_x2);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, sad3);
+            let sum_part1 = _mm256_add_epi32(v_s1_x4, sad1_x3);
+            let sum_part2 = _mm256_add_epi32(sad2_x2, sad3);
+            let total_inc = _mm256_add_epi32(sum_part1, sum_part2);
+
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, total_inc);
 
             let sum_sads =
                 _mm256_add_epi32(_mm256_add_epi32(sad1, sad2), _mm256_add_epi32(sad3, sad4));
