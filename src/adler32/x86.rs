@@ -121,85 +121,89 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_a = _mm256_setzero_si256();
         let mut v_s2_b = _mm256_setzero_si256();
 
-        while chunk_n >= 256 {
-            _mm_prefetch((ptr as usize + 256) as *const i8, _MM_HINT_T0);
-            _mm_prefetch((ptr as usize + 320) as *const i8, _MM_HINT_T0);
-            _mm_prefetch((ptr as usize + 384) as *const i8, _MM_HINT_T0);
-            _mm_prefetch((ptr as usize + 448) as *const i8, _MM_HINT_T0);
+        // Only use the heavily unrolled 256-byte loop for larger chunks.
+        // For small inputs (e.g. 1KB), the setup and prefetch overhead outweighs the benefits.
+        if chunk_n >= 2048 {
+            while chunk_n >= 256 {
+                _mm_prefetch((ptr as usize + 256) as *const i8, _MM_HINT_T0);
+                _mm_prefetch((ptr as usize + 320) as *const i8, _MM_HINT_T0);
+                _mm_prefetch((ptr as usize + 384) as *const i8, _MM_HINT_T0);
+                _mm_prefetch((ptr as usize + 448) as *const i8, _MM_HINT_T0);
 
-            {
-                let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
-                let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
-                let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
-                let data_b_2 = _mm256_loadu_si256(ptr.add(96) as *const __m256i);
+                {
+                    let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
+                    let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
+                    let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
+                    let data_b_2 = _mm256_loadu_si256(ptr.add(96) as *const __m256i);
 
-                let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
-                let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
-                let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
-                let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
+                    let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
+                    let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
+                    let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
+                    let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
 
-                let s12 = _mm256_add_epi32(sad1, sad2);
-                let s34 = _mm256_add_epi32(sad3, sad4);
-                let sum_sads = _mm256_add_epi32(s12, s34);
+                    let s12 = _mm256_add_epi32(sad1, sad2);
+                    let s34 = _mm256_add_epi32(sad3, sad4);
+                    let sum_sads = _mm256_add_epi32(s12, s34);
 
-                let s12_x2 = _mm256_slli_epi32(s12, 1);
-                let inc_part = _mm256_add_epi32(_mm256_add_epi32(s12_x2, sad1), sad3);
+                    let s12_x2 = _mm256_slli_epi32(s12, 1);
+                    let inc_part = _mm256_add_epi32(_mm256_add_epi32(s12_x2, sad1), sad3);
 
-                v_s1_acc = _mm256_add_epi32(v_s1_acc, v_s1);
-                v_inc_acc_a = _mm256_add_epi32(v_inc_acc_a, inc_part);
-                v_s1 = _mm256_add_epi32(v_s1, sum_sads);
+                    v_s1_acc = _mm256_add_epi32(v_s1_acc, v_s1);
+                    v_inc_acc_a = _mm256_add_epi32(v_inc_acc_a, inc_part);
+                    v_s1 = _mm256_add_epi32(v_s1, sum_sads);
 
-                let p1 = _mm256_maddubs_epi16(data_a_1, weights);
-                let s_a = _mm256_madd_epi16(p1, ones_i16);
-                let p2 = _mm256_maddubs_epi16(data_b_1, weights);
-                let s_b = _mm256_madd_epi16(p2, ones_i16);
-                v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
+                    let p1 = _mm256_maddubs_epi16(data_a_1, weights);
+                    let s_a = _mm256_madd_epi16(p1, ones_i16);
+                    let p2 = _mm256_maddubs_epi16(data_b_1, weights);
+                    let s_b = _mm256_madd_epi16(p2, ones_i16);
+                    v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
 
-                let p3 = _mm256_maddubs_epi16(data_a_2, weights);
-                let s_c = _mm256_madd_epi16(p3, ones_i16);
-                let p4 = _mm256_maddubs_epi16(data_b_2, weights);
-                let s_d = _mm256_madd_epi16(p4, ones_i16);
-                v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
+                    let p3 = _mm256_maddubs_epi16(data_a_2, weights);
+                    let s_c = _mm256_madd_epi16(p3, ones_i16);
+                    let p4 = _mm256_maddubs_epi16(data_b_2, weights);
+                    let s_d = _mm256_madd_epi16(p4, ones_i16);
+                    v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
+                }
+
+                {
+                    let data_a_1 = _mm256_loadu_si256(ptr.add(128) as *const __m256i);
+                    let data_b_1 = _mm256_loadu_si256(ptr.add(160) as *const __m256i);
+                    let data_a_2 = _mm256_loadu_si256(ptr.add(192) as *const __m256i);
+                    let data_b_2 = _mm256_loadu_si256(ptr.add(224) as *const __m256i);
+
+                    let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
+                    let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
+                    let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
+                    let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
+
+                    let s12 = _mm256_add_epi32(sad1, sad2);
+                    let s34 = _mm256_add_epi32(sad3, sad4);
+                    let sum_sads = _mm256_add_epi32(s12, s34);
+
+                    let s12_x2 = _mm256_slli_epi32(s12, 1);
+                    let inc_part = _mm256_add_epi32(_mm256_add_epi32(s12_x2, sad1), sad3);
+
+                    v_s1_acc = _mm256_add_epi32(v_s1_acc, v_s1);
+                    v_inc_acc_b = _mm256_add_epi32(v_inc_acc_b, inc_part);
+                    v_s1 = _mm256_add_epi32(v_s1, sum_sads);
+
+                    let p1 = _mm256_maddubs_epi16(data_a_1, weights);
+                    let s_a = _mm256_madd_epi16(p1, ones_i16);
+                    let p2 = _mm256_maddubs_epi16(data_b_1, weights);
+                    let s_b = _mm256_madd_epi16(p2, ones_i16);
+                    v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
+
+                    let p3 = _mm256_maddubs_epi16(data_a_2, weights);
+                    let s_c = _mm256_madd_epi16(p3, ones_i16);
+                    let p4 = _mm256_maddubs_epi16(data_b_2, weights);
+                    let s_d = _mm256_madd_epi16(p4, ones_i16);
+                    v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
+                }
+
+                ptr = ptr.add(256);
+                chunk_n -= 256;
+                len -= 256;
             }
-
-            {
-                let data_a_1 = _mm256_loadu_si256(ptr.add(128) as *const __m256i);
-                let data_b_1 = _mm256_loadu_si256(ptr.add(160) as *const __m256i);
-                let data_a_2 = _mm256_loadu_si256(ptr.add(192) as *const __m256i);
-                let data_b_2 = _mm256_loadu_si256(ptr.add(224) as *const __m256i);
-
-                let sad1 = _mm256_sad_epu8(data_a_1, v_zero);
-                let sad2 = _mm256_sad_epu8(data_b_1, v_zero);
-                let sad3 = _mm256_sad_epu8(data_a_2, v_zero);
-                let sad4 = _mm256_sad_epu8(data_b_2, v_zero);
-
-                let s12 = _mm256_add_epi32(sad1, sad2);
-                let s34 = _mm256_add_epi32(sad3, sad4);
-                let sum_sads = _mm256_add_epi32(s12, s34);
-
-                let s12_x2 = _mm256_slli_epi32(s12, 1);
-                let inc_part = _mm256_add_epi32(_mm256_add_epi32(s12_x2, sad1), sad3);
-
-                v_s1_acc = _mm256_add_epi32(v_s1_acc, v_s1);
-                v_inc_acc_b = _mm256_add_epi32(v_inc_acc_b, inc_part);
-                v_s1 = _mm256_add_epi32(v_s1, sum_sads);
-
-                let p1 = _mm256_maddubs_epi16(data_a_1, weights);
-                let s_a = _mm256_madd_epi16(p1, ones_i16);
-                let p2 = _mm256_maddubs_epi16(data_b_1, weights);
-                let s_b = _mm256_madd_epi16(p2, ones_i16);
-                v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
-
-                let p3 = _mm256_maddubs_epi16(data_a_2, weights);
-                let s_c = _mm256_madd_epi16(p3, ones_i16);
-                let p4 = _mm256_maddubs_epi16(data_b_2, weights);
-                let s_d = _mm256_madd_epi16(p4, ones_i16);
-                v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
-            }
-
-            ptr = ptr.add(256);
-            chunk_n -= 256;
-            len -= 256;
         }
 
         while chunk_n >= 128 {
