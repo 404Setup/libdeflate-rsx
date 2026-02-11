@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::sync::OnceLock;
 
 const DIVISOR: u32 = 65521;
 const MAX_CHUNK_LEN: usize = 5552;
@@ -96,32 +97,41 @@ mod x86;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 mod arm;
 
+type Adler32Fn = unsafe fn(u32, &[u8]) -> u32;
+
 pub fn adler32(adler: u32, slice: &[u8]) -> u32 {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("avx512vnni") {
-            return unsafe { x86::adler32_x86_avx512_vnni(adler, slice) };
+    // Optimization: Use `std::sync::OnceLock` to cache the best implementation function pointer.
+    // This avoids repeated CPU feature detection overhead on every call, which is beneficial for small inputs.
+    static IMPL: OnceLock<Adler32Fn> = OnceLock::new();
+    let func = IMPL.get_or_init(|| {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx512vnni") {
+                return x86::adler32_x86_avx512_vnni;
+            }
+            if is_x86_feature_detected!("avxvnni") {
+                return x86::adler32_x86_avx2_vnni;
+            }
+            if is_x86_feature_detected!("avx2") {
+                return x86::adler32_x86_avx2;
+            }
+            if is_x86_feature_detected!("sse2") {
+                return x86::adler32_x86_sse2;
+            }
         }
-        if is_x86_feature_detected!("avxvnni") {
-            return unsafe { x86::adler32_x86_avx2_vnni(adler, slice) };
-        }
-        if is_x86_feature_detected!("avx2") {
-            return unsafe { x86::adler32_x86_avx2(adler, slice) };
-        }
-        if is_x86_feature_detected!("sse2") {
-            return unsafe { x86::adler32_x86_sse2(adler, slice) };
-        }
-    }
 
-    #[cfg(target_arch = "aarch64")]
-    {
-        if std::arch::is_aarch64_feature_detected!("dotprod") {
-            return unsafe { arm::adler32_arm_neon_dotprod(adler, slice) };
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("dotprod") {
+                return arm::adler32_arm_neon_dotprod;
+            }
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                return arm::adler32_arm_neon;
+            }
         }
-        if std::arch::is_aarch64_feature_detected!("neon") {
-            return unsafe { arm::adler32_arm_neon(adler, slice) };
-        }
-    }
 
-    adler32_generic(adler, slice)
+        adler32_generic
+    });
+
+    unsafe { func(adler, slice) }
 }
