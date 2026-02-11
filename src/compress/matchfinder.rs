@@ -10,6 +10,10 @@ pub const MATCHFINDER_HASH_ORDER: usize = 15;
 pub const MATCHFINDER_HASH_SIZE: usize = 1 << MATCHFINDER_HASH_ORDER;
 pub const MATCHFINDER_WINDOW_SIZE: usize = 32768;
 
+// Function pointer for the optimized match length calculation.
+// This avoids repeated feature detection inside the hot loop.
+type MatchLenFn = unsafe fn(*const u8, *const u8, usize) -> usize;
+
 pub trait MatchFinderTrait {
     fn reset(&mut self);
     fn prepare(&mut self, len: usize);
@@ -140,74 +144,8 @@ impl MatchFinderTrait for BtMatchFinder {
 }
 
 #[inline(always)]
-unsafe fn match_len_ptr(a: *const u8, b: *const u8, max_len: usize) -> usize {
+unsafe fn match_len_sw(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        if max_len >= 64 && is_x86_feature_detected!("avx512bw") {
-            while len + 64 <= max_len {
-                let v1 = _mm512_loadu_si512(a.add(len) as *const _);
-                let v2 = _mm512_loadu_si512(b.add(len) as *const _);
-                let mask = _mm512_cmpeq_epi8_mask(v1, v2);
-                if mask != u64::MAX {
-                    return len + (!mask).trailing_zeros() as usize;
-                }
-                len += 64;
-            }
-        }
-
-        if max_len >= 32 && is_x86_feature_detected!("avx2") {
-            while len + 32 <= max_len {
-                let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
-                let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
-                let cmp = _mm256_cmpeq_epi8(v1, v2);
-                let mask = _mm256_movemask_epi8(cmp) as u32;
-                if mask != 0xFFFFFFFF {
-                    return len + (!mask).trailing_zeros() as usize;
-                }
-                len += 32;
-            }
-        }
-
-        #[cfg(target_arch = "x86_64")]
-        if max_len >= 16 && is_x86_feature_detected!("sse2") {
-            while len + 16 <= max_len {
-                let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
-                let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
-                let cmp = _mm_cmpeq_epi8(v1, v2);
-                let mask = _mm_movemask_epi8(cmp) as u32;
-                if mask != 0xFFFF {
-                    return len + (!mask).trailing_zeros() as usize;
-                }
-                len += 16;
-            }
-        }
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    {
-        if max_len >= 16 && std::arch::is_aarch64_feature_detected!("neon") {
-            while len + 16 <= max_len {
-                let v1 = vld1q_u8(a.add(len));
-                let v2 = vld1q_u8(b.add(len));
-                let xor = veorq_u8(v1, v2);
-                if vmaxvq_u8(xor) == 0 {
-                    len += 16;
-                } else {
-                    let mut bytes = [0u8; 16];
-                    vst1q_u8(bytes.as_mut_ptr(), xor);
-                    for i in 0..16 {
-                        if bytes[i] != 0 {
-                            return len + i;
-                        }
-                    }
-                    return len;
-                }
-            }
-        }
-    }
-
     while len + 8 <= max_len {
         let a_val = (a.add(len) as *const u64).read_unaligned();
         let b_val = (b.add(len) as *const u64).read_unaligned();
@@ -238,10 +176,114 @@ unsafe fn match_len_ptr(a: *const u8, b: *const u8, max_len: usize) -> usize {
     len
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+#[inline]
+unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
+    let mut len = 0;
+    while len + 16 <= max_len {
+        let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
+        let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
+        let cmp = _mm_cmpeq_epi8(v1, v2);
+        let mask = _mm_movemask_epi8(cmp) as u32;
+        if mask != 0xFFFF {
+            return len + (!mask).trailing_zeros() as usize;
+        }
+        len += 16;
+    }
+    len + match_len_sw(a.add(len), b.add(len), max_len - len)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
+    let mut len = 0;
+    while len + 32 <= max_len {
+        let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
+        let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
+        let cmp = _mm256_cmpeq_epi8(v1, v2);
+        let mask = _mm256_movemask_epi8(cmp) as u32;
+        if mask != 0xFFFFFFFF {
+            return len + (!mask).trailing_zeros() as usize;
+        }
+        len += 32;
+    }
+    len + match_len_sse2(a.add(len), b.add(len), max_len - len)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw")]
+#[inline]
+unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize {
+    let mut len = 0;
+    while len + 64 <= max_len {
+        let v1 = _mm512_loadu_si512(a.add(len) as *const _);
+        let v2 = _mm512_loadu_si512(b.add(len) as *const _);
+        let mask = _mm512_cmpeq_epi8_mask(v1, v2);
+        if mask != u64::MAX {
+            return len + (!mask).trailing_zeros() as usize;
+        }
+        len += 64;
+    }
+    len + match_len_avx2(a.add(len), b.add(len), max_len - len)
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+#[inline]
+unsafe fn match_len_neon(a: *const u8, b: *const u8, max_len: usize) -> usize {
+    let mut len = 0;
+    while len + 16 <= max_len {
+        let v1 = vld1q_u8(a.add(len));
+        let v2 = vld1q_u8(b.add(len));
+        let xor = veorq_u8(v1, v2);
+        if vmaxvq_u8(xor) == 0 {
+            len += 16;
+        } else {
+            let mut bytes = [0u8; 16];
+            vst1q_u8(bytes.as_mut_ptr(), xor);
+            for i in 0..16 {
+                if bytes[i] != 0 {
+                    return len + i;
+                }
+            }
+            return len;
+        }
+    }
+    len + match_len_sw(a.add(len), b.add(len), max_len - len)
+}
+
+// Selects the best available match length implementation at runtime.
+// This is called once during initialization to avoid checking CPU features
+// inside the compression loop.
+fn get_match_len_func() -> MatchLenFn {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512bw") {
+            return match_len_avx512;
+        }
+        if is_x86_feature_detected!("avx2") {
+            return match_len_avx2;
+        }
+        if is_x86_feature_detected!("sse2") {
+            return match_len_sse2;
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") {
+             return match_len_neon;
+        }
+    }
+    match_len_sw
+}
+
 pub struct MatchFinder {
     pub hash_tab: Vec<i32>,
     pub prev_tab: Vec<u16>,
     pub base_offset: usize,
+    match_len: MatchLenFn,
 }
 
 impl MatchFinder {
@@ -250,6 +292,7 @@ impl MatchFinder {
             hash_tab: vec![-1; MATCHFINDER_HASH_SIZE],
             prev_tab: vec![0; MATCHFINDER_WINDOW_SIZE],
             base_offset: 0,
+            match_len: get_match_len_func(),
         }
     }
 
@@ -348,7 +391,7 @@ impl MatchFinder {
             if pos + best_len < data.len() && match_val == src_val {
                 if best_len < 3 || *match_ptr.add(best_len) == *src.add(best_len) {
                     let max_len = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
-                    let len = match_len_ptr(match_ptr, src, max_len);
+                    let len = (self.match_len)(match_ptr, src, max_len);
 
                     if len > best_len {
                         best_len = len;
@@ -475,6 +518,7 @@ impl MatchFinder {
 pub struct HtMatchFinder {
     pub hash_tab: Vec<i32>,
     pub base_offset: usize,
+    match_len: MatchLenFn,
 }
 
 impl HtMatchFinder {
@@ -482,6 +526,7 @@ impl HtMatchFinder {
         Self {
             hash_tab: vec![-1; MATCHFINDER_HASH_SIZE],
             base_offset: 0,
+            match_len: get_match_len_func(),
         }
     }
 
@@ -548,7 +593,7 @@ impl HtMatchFinder {
 
             if src_val == match_val {
                 let max_len = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
-                let len = match_len_ptr(match_ptr, src, max_len);
+                let len = (self.match_len)(match_ptr, src, max_len);
                 if len >= 3 {
                     return (len, offset);
                 }
@@ -582,12 +627,6 @@ impl HtMatchFinder {
         if count == 0 {
             return;
         }
-        // Check if we can do the fast path (all reads within bounds)
-        // We read 3 bytes (pos, pos+1, pos+2) for hashing.
-        // The read logic in skip_match uses read_unaligned(u32) if pos + 4 <= data.len().
-        // We want to use read_unaligned for all iterations if possible.
-        // Last iteration reads at pos + count - 1. We need pos + count - 1 + 4 <= data.len().
-        // So pos + count + 3 <= data.len().
         if pos.checked_add(count + 3).map_or(true, |end| end > data.len()) {
             for i in 0..count {
                 self.skip_match(data, pos + i);
@@ -618,6 +657,7 @@ pub struct BtMatchFinder {
     pub hash4_tab: Vec<i32>,
     pub child_tab: Vec<[i32; 2]>,
     pub base_offset: usize,
+    match_len: MatchLenFn,
 }
 
 impl BtMatchFinder {
@@ -627,6 +667,7 @@ impl BtMatchFinder {
             hash4_tab: vec![-1; 1 << 16],
             child_tab: vec![[0; 2]; MATCHFINDER_WINDOW_SIZE],
             base_offset: 0,
+            match_len: get_match_len_func(),
         }
     }
 
@@ -727,7 +768,7 @@ impl BtMatchFinder {
                 let p_rel = p_abs - self.base_offset;
                 let match_ptr = data.as_ptr().add(p_rel);
 
-                let len = match_len_ptr(match_ptr, src, max_len_clamped);
+                let len = (self.match_len)(match_ptr, src, max_len_clamped);
 
                 if len > best_len {
                     best_len = len;
@@ -863,7 +904,7 @@ impl BtMatchFinder {
                 let p_rel = p_abs - self.base_offset;
                 let match_ptr = data.as_ptr().add(p_rel);
 
-                let len = match_len_ptr(match_ptr, src, max_len_clamped);
+                let len = (self.match_len)(match_ptr, src, max_len_clamped);
 
                 if record_matches && len > best_len {
                     best_len = len;
@@ -966,5 +1007,16 @@ mod tests {
         let mut mf = BtMatchFinder::new();
         let data = b"some data";
         mf.skip_match(data, usize::MAX, 10);
+    }
+
+    #[test]
+    fn test_match_len_selection() {
+        let mf = MatchFinder::new();
+        let a = b"abcdef";
+        let b = b"abcxyz";
+        unsafe {
+            let len = (mf.match_len)(a.as_ptr(), b.as_ptr(), 6);
+            assert_eq!(len, 3);
+        }
     }
 }
