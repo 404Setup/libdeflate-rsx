@@ -16,6 +16,11 @@ pub trait MatchFinderTrait {
     fn advance(&mut self, len: usize);
     fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize);
     fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize);
+    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, max_depth: usize) {
+        for i in 0..count {
+            self.skip_match(data, pos + i, max_depth);
+        }
+    }
     fn find_matches(
         &mut self,
         data: &[u8],
@@ -40,6 +45,9 @@ impl MatchFinderTrait for MatchFinder {
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
         self.skip_match(data, pos);
+    }
+    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, _max_depth: usize) {
+        self.skip_positions(data, pos, count);
     }
     fn find_matches(
         &mut self,
@@ -67,6 +75,9 @@ impl MatchFinderTrait for HtMatchFinder {
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
         self.skip_match(data, pos);
+    }
+    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, _max_depth: usize) {
+        self.skip_positions(data, pos, count);
     }
     fn find_matches(
         &mut self,
@@ -421,6 +432,44 @@ impl MatchFinder {
             }
         }
     }
+
+    pub fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize) {
+        if count == 0 {
+            return;
+        }
+        if pos.checked_add(count + 3).map_or(true, |end| end > data.len()) {
+            for i in 0..count {
+                self.skip_match(data, pos + i);
+            }
+            return;
+        }
+
+        unsafe {
+            let mut ptr = data.as_ptr().add(pos);
+            let end_ptr = ptr.add(count);
+            let mut abs_pos = self.base_offset + pos;
+
+            while ptr < end_ptr {
+                let src_val = (ptr as *const u32).read_unaligned() & 0xFFFFFF;
+                let h = (src_val.wrapping_mul(0x1E35A7BD)) >> (32 - MATCHFINDER_HASH_ORDER);
+                let h_idx = h as usize;
+
+                let cur_pos = *self.hash_tab.get_unchecked(h_idx);
+                *self.hash_tab.get_unchecked_mut(h_idx) = abs_pos as i32;
+
+                if cur_pos != -1 && (cur_pos as usize) >= self.base_offset {
+                    let prev_offset = abs_pos - (cur_pos as usize);
+                    let val = if prev_offset > 0xFFFF { 0 } else { prev_offset as u16 };
+                    *self.prev_tab.get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = val;
+                } else {
+                    *self.prev_tab.get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = 0;
+                }
+
+                ptr = ptr.add(1);
+                abs_pos += 1;
+            }
+        }
+    }
 }
 
 pub struct HtMatchFinder {
@@ -526,6 +575,40 @@ impl HtMatchFinder {
 
             let abs_pos = self.base_offset + pos;
             *self.hash_tab.get_unchecked_mut(h as usize) = abs_pos as i32;
+        }
+    }
+
+    pub fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize) {
+        if count == 0 {
+            return;
+        }
+        // Check if we can do the fast path (all reads within bounds)
+        // We read 3 bytes (pos, pos+1, pos+2) for hashing.
+        // The read logic in skip_match uses read_unaligned(u32) if pos + 4 <= data.len().
+        // We want to use read_unaligned for all iterations if possible.
+        // Last iteration reads at pos + count - 1. We need pos + count - 1 + 4 <= data.len().
+        // So pos + count + 3 <= data.len().
+        if pos.checked_add(count + 3).map_or(true, |end| end > data.len()) {
+            for i in 0..count {
+                self.skip_match(data, pos + i);
+            }
+            return;
+        }
+
+        unsafe {
+            let mut ptr = data.as_ptr().add(pos);
+            let end_ptr = ptr.add(count);
+            let mut abs_pos = self.base_offset + pos;
+
+            while ptr < end_ptr {
+                let src_val = (ptr as *const u32).read_unaligned() & 0xFFFFFF;
+                let h = (src_val.wrapping_mul(0x1E35A7BD)) >> (32 - MATCHFINDER_HASH_ORDER);
+
+                *self.hash_tab.get_unchecked_mut(h as usize) = abs_pos as i32;
+
+                ptr = ptr.add(1);
+                abs_pos += 1;
+            }
         }
     }
 }

@@ -33,31 +33,41 @@ fn bench_crc32_slice8(c: &mut Criterion) {
 }
 
 fn bench_checksums(c: &mut Criterion) {
-    let path = "bench_data/data_L.bin";
-    if !Path::new(path).exists() {
-        return;
-    }
-    let data = read_file(path);
-    let size = data.len();
+    let files = [
+        ("XXS", "bench_data/data_XXS.bin"),
+        ("S", "bench_data/data_S.bin"),
+        ("L", "bench_data/data_L.bin"),
+    ];
 
     let mut group = c.benchmark_group("Checksums");
-    group.throughput(Throughput::Bytes(size as u64));
 
-    group.bench_with_input("Adler32/libdeflate-rs", &size, |b, &_size| {
-        b.iter(|| adler32(1, &data));
-    });
+    for (name, path) in &files {
+        if !Path::new(path).exists() {
+            continue;
+        }
+        let data = read_file(path);
+        let size = data.len();
 
-    group.bench_with_input("Adler32/libdeflater", &size, |b, &_size| {
-        b.iter(|| libdeflater::adler32(&data));
-    });
+        group.throughput(Throughput::Bytes(size as u64));
 
-    group.bench_with_input("CRC32/libdeflate-rs", &size, |b, &_size| {
-        b.iter(|| crc32(0, &data));
-    });
+        group.bench_with_input(BenchmarkId::new(format!("Adler32/libdeflate-rs {}", name), size), &size, |b, &_size| {
+            b.iter(|| adler32(1, &data));
+        });
 
-    group.bench_with_input("CRC32/libdeflater", &size, |b, &_size| {
-        b.iter(|| libdeflater::crc32(&data));
-    });
+        group.bench_with_input(BenchmarkId::new(format!("Adler32/libdeflater {}", name), size), &size, |b, &_size| {
+            b.iter(|| libdeflater::adler32(&data));
+        });
+
+        if *name == "L" {
+             group.bench_with_input("CRC32/libdeflate-rs", &size, |b, &_size| {
+                b.iter(|| crc32(0, &data));
+            });
+
+            group.bench_with_input("CRC32/libdeflater", &size, |b, &_size| {
+                b.iter(|| libdeflater::crc32(&data));
+            });
+        }
+    }
 
     group.finish();
 }
