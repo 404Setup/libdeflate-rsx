@@ -491,7 +491,7 @@ impl Decompressor {
                     let b = *out_ptr.add(src);
                     std::ptr::write_bytes(out_ptr.add(dest), b, length);
                 } else {
-                    if offset < 16 {
+                    if offset < 8 {
                         let src_ptr = out_ptr.add(src);
                         let dest_ptr = out_ptr.add(dest);
                         for i in 0..length {
@@ -606,7 +606,7 @@ impl Decompressor {
 
                     unsafe {
                         let out_ptr = output.as_mut_ptr();
-                        if offset < 16 {
+                        if offset < 8 {
                             let src_ptr = out_ptr.add(src);
                             let dest_ptr = out_ptr.add(dest);
                             for i in 0..length {
@@ -725,7 +725,7 @@ impl Decompressor {
                         let b = *out_ptr.add(src);
                         std::ptr::write_bytes(out_ptr.add(dest), b, length);
                     } else {
-                        if offset < 16 {
+                        if offset < 8 {
                             let src_ptr = out_ptr.add(src);
                             let dest_ptr = out_ptr.add(dest);
                             for i in 0..length {
