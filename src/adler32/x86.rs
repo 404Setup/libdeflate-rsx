@@ -126,11 +126,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let v_zero = _mm256_setzero_si256();
 
             while chunk_n >= 256 {
-                // Prefetch 2 chunks (512 bytes) ahead to hide memory latency
-                _mm_prefetch((ptr as usize + 256 + 256) as *const i8, _MM_HINT_T0);
-                _mm_prefetch((ptr as usize + 320 + 256) as *const i8, _MM_HINT_T0);
-                _mm_prefetch((ptr as usize + 384 + 256) as *const i8, _MM_HINT_T0);
-                _mm_prefetch((ptr as usize + 448 + 256) as *const i8, _MM_HINT_T0);
+                // Manual prefetching removed as it degraded performance on modern CPUs
+                // by interfering with hardware prefetchers, especially for L2-resident data.
 
                 {
                     let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
