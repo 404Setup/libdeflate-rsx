@@ -493,7 +493,8 @@ impl Decompressor {
                 } else if offset < 8 {
                     let src_ptr = out_ptr.add(src);
                     let dest_ptr = out_ptr.add(dest);
-                    let pattern = prepare_pattern(offset, src_ptr);
+                    if offset == 1 || offset == 2 || offset == 4 {
+                        let pattern = prepare_pattern(offset, src_ptr);
                         let mut i = 0;
                         while i + 8 <= length {
                             std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
@@ -503,18 +504,33 @@ impl Decompressor {
                             *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
                             i += 1;
                         }
-                } else {
-                    let mut copied = 0;
-                        while copied < length {
-                            let copy_len = std::cmp::min(offset, length - copied);
+                    } else {
+                        let mut copied = 0;
+                        while copied + offset <= length {
                             std::ptr::copy_nonoverlapping(
-                                out_ptr.add(src + copied),
-                                out_ptr.add(dest + copied),
-                                copy_len,
+                                src_ptr.add(copied),
+                                dest_ptr.add(copied),
+                                offset,
                             );
-                            copied += copy_len;
+                            copied += offset;
+                        }
+                        while copied < length {
+                            *dest_ptr.add(copied) = *src_ptr.add(copied);
+                            copied += 1;
                         }
                     }
+                } else {
+                    let mut copied = 0;
+                    while copied < length {
+                        let copy_len = std::cmp::min(offset, length - copied);
+                        std::ptr::copy_nonoverlapping(
+                            out_ptr.add(src + copied),
+                            out_ptr.add(dest + copied),
+                            copy_len,
+                        );
+                        copied += copy_len;
+                    }
+                }
             }
             *out_idx += length;
             self.state = DecompressorState::BlockBody;
@@ -628,9 +644,14 @@ impl Decompressor {
                                     let b0 = *src_ptr as u64;
                                     let b1 = *src_ptr.add(1) as u64;
                                     let b2 = *src_ptr.add(2) as u64;
-                                    pattern = b0 | (b1 << 8) | (b2 << 16)
-                                            | (b0 << 24) | (b1 << 32) | (b2 << 40)
-                                            | (b0 << 48) | (b1 << 56);
+                                    pattern = b0
+                                        | (b1 << 8)
+                                        | (b2 << 16)
+                                        | (b0 << 24)
+                                        | (b1 << 32)
+                                        | (b2 << 40)
+                                        | (b0 << 48)
+                                        | (b1 << 56);
                                 }
                                 4 => {
                                     let w = std::ptr::read_unaligned(src_ptr as *const u32) as u64;
@@ -766,30 +787,30 @@ impl Decompressor {
                     } else if offset == 1 {
                         let b = *out_ptr.add(src);
                         std::ptr::write_bytes(out_ptr.add(dest), b, length);
-                        } else if offset < 8 {
-                            let src_ptr = out_ptr.add(src);
-                            let dest_ptr = out_ptr.add(dest);
-                            let pattern = prepare_pattern(offset, src_ptr);
-                            let mut i = 0;
-                            while i + 8 <= length {
-                                std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
-                                i += 8;
-                            }
-                            while i < length {
-                                *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
-                                i += 1;
-                            }
-                        } else {
-                            let mut copied = 0;
-                            while copied < length {
-                                let copy_len = std::cmp::min(offset, length - copied);
-                                std::ptr::copy_nonoverlapping(
-                                    out_ptr.add(src + copied),
-                                    out_ptr.add(dest + copied),
-                                    copy_len,
-                                );
-                                copied += copy_len;
-                            }
+                    } else if offset < 8 {
+                        let src_ptr = out_ptr.add(src);
+                        let dest_ptr = out_ptr.add(dest);
+                        let pattern = prepare_pattern(offset, src_ptr);
+                        let mut i = 0;
+                        while i + 8 <= length {
+                            std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                            i += 8;
+                        }
+                        while i < length {
+                            *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
+                            i += 1;
+                        }
+                    } else {
+                        let mut copied = 0;
+                        while copied < length {
+                            let copy_len = std::cmp::min(offset, length - copied);
+                            std::ptr::copy_nonoverlapping(
+                                out_ptr.add(src + copied),
+                                out_ptr.add(dest + copied),
+                                copy_len,
+                            );
+                            copied += copy_len;
+                        }
                     }
                 }
                 *out_idx += length;
@@ -947,7 +968,7 @@ impl Decompressor {
 }
 
 #[inline(always)]
-unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
+pub(crate) unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
     match offset {
         1 => {
             let b = *src_ptr as u64;
@@ -961,9 +982,14 @@ unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
             let b0 = *src_ptr as u64;
             let b1 = *src_ptr.add(1) as u64;
             let b2 = *src_ptr.add(2) as u64;
-            let p_le = b0 | (b1 << 8) | (b2 << 16)
-                    | (b0 << 24) | (b1 << 32) | (b2 << 40)
-                    | (b0 << 48) | (b1 << 56);
+            let p_le = b0
+                | (b1 << 8)
+                | (b2 << 16)
+                | (b0 << 24)
+                | (b1 << 32)
+                | (b2 << 40)
+                | (b0 << 48)
+                | (b1 << 56);
             u64::from_le(p_le)
         }
         4 => {
