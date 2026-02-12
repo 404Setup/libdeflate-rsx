@@ -468,6 +468,61 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
         let mut v_s1_sums = _mm512_setzero_si512();
 
         let mut chunk_n = n;
+
+        // Optimization: Unrolled loop for larger chunks (256 bytes per iter).
+        // This breaks dependency chains and increases instruction level parallelism.
+        if chunk_n >= 2048 {
+            let mut ptr = data.as_ptr();
+            let mut v_s2_a = _mm512_setzero_si512();
+            let mut v_s2_b = _mm512_setzero_si512();
+            let mut v_s2_c = _mm512_setzero_si512();
+            let mut v_s2_d = _mm512_setzero_si512();
+            let v_zero = _mm512_setzero_si512();
+
+            while chunk_n >= 256 {
+                let d1 = _mm512_loadu_si512(ptr as *const _);
+                let d2 = _mm512_loadu_si512(ptr.add(64) as *const _);
+                let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
+                let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
+
+                // Update s2 accumulators independently with local weighted sums
+                v_s2_a = _mm512_dpbusd_epi32(v_s2_a, d1, mults);
+                v_s2_b = _mm512_dpbusd_epi32(v_s2_b, d2, mults);
+                v_s2_c = _mm512_dpbusd_epi32(v_s2_c, d3, mults);
+                v_s2_d = _mm512_dpbusd_epi32(v_s2_d, d4, mults);
+
+                // Calculate sums of each 64-byte block
+                let u1 = _mm512_dpbusd_epi32(v_zero, d1, ones);
+                let u2 = _mm512_dpbusd_epi32(v_zero, d2, ones);
+                let u3 = _mm512_dpbusd_epi32(v_zero, d3, ones);
+                let u4 = _mm512_dpbusd_epi32(v_zero, d4, ones);
+
+                // Update s1_sums
+                // Formula: S_new = S_old + 4*v_s1 + 3*u1 + 2*u2 + 1*u3
+                let s1_x4 = _mm512_slli_epi32(v_s1, 2); // v_s1 * 4
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, s1_x4);
+
+                let u12 = _mm512_add_epi32(u1, u2);
+                let u12_x2 = _mm512_slli_epi32(u12, 1); // 2*(u1+u2)
+                let inc = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3); // 3u1 + 2u2 + u3
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, inc);
+
+                // Update v_s1
+                let u34 = _mm512_add_epi32(u3, u4);
+                let total_u = _mm512_add_epi32(u12, u34);
+                v_s1 = _mm512_add_epi32(v_s1, total_u);
+
+                ptr = ptr.add(256);
+                chunk_n -= 256;
+            }
+
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_a, v_s2_b));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_c, v_s2_d));
+
+            let processed = ptr as usize - data.as_ptr() as usize;
+            data = &data[processed..];
+        }
+
         while chunk_n >= 64 {
             let d = _mm512_loadu_si512(data.as_ptr() as *const _);
             v_s1_sums = _mm512_add_epi32(v_s1_sums, v_s1);
