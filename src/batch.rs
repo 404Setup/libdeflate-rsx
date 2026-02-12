@@ -24,11 +24,8 @@ impl BatchCompressor {
                     // Safe because we reserved enough capacity
                     let buf_slice = &mut buf_uninit[..bound];
 
-                    let (res, size, _) = compressor.compress(
-                        input,
-                        buf_slice,
-                        crate::compress::FlushMode::Finish,
-                    );
+                    let (res, size, _) =
+                        compressor.compress(input, buf_slice, crate::compress::FlushMode::Finish);
                     if res == CompressResult::Success {
                         unsafe {
                             buffer.set_len(size);

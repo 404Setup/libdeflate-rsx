@@ -71,10 +71,12 @@ fn test_compress_decompress_deflate() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
     let data = b"Hello world! This is a test string for deflate compression.";
-    
+
     let compressed = compressor.compress_deflate(data).unwrap();
-    let decompressed = decompressor.decompress_deflate(&compressed, data.len()).unwrap();
-    
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, data.len())
+        .unwrap();
+
     assert_eq!(data.to_vec(), decompressed);
 }
 
@@ -83,10 +85,12 @@ fn test_compress_decompress_zlib() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
     let data = b"Hello world! This is a test string for zlib compression.";
-    
+
     let compressed = compressor.compress_zlib(data).unwrap();
-    let decompressed = decompressor.decompress_zlib(&compressed, data.len()).unwrap();
-    
+    let decompressed = decompressor
+        .decompress_zlib(&compressed, data.len())
+        .unwrap();
+
     assert_eq!(data.to_vec(), decompressed);
 }
 
@@ -95,10 +99,12 @@ fn test_compress_decompress_gzip() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
     let data = b"Hello world! This is a test string for gzip compression.";
-    
+
     let compressed = compressor.compress_gzip(data).unwrap();
-    let decompressed = decompressor.decompress_gzip(&compressed, data.len()).unwrap();
-    
+    let decompressed = decompressor
+        .decompress_gzip(&compressed, data.len())
+        .unwrap();
+
     assert_eq!(data.to_vec(), decompressed);
 }
 
@@ -131,7 +137,7 @@ fn test_decompress_errors() {
 fn test_buffer_reuse() {
     let mut c = Compressor::new(6).unwrap();
     let mut d = Decompressor::new();
-    
+
     let data1 = b"Data set 1";
     let comp1 = c.compress_deflate(data1).unwrap();
     let decomp1 = d.decompress_deflate(&comp1, data1.len()).unwrap();
@@ -170,7 +176,9 @@ fn test_compress_gzip_into_success() {
     assert!(size > 0);
     assert!(size <= bound);
 
-    let decompressed = decompressor.decompress_gzip(&output[..size], data.len()).unwrap();
+    let decompressed = decompressor
+        .decompress_gzip(&output[..size], data.len())
+        .unwrap();
     assert_eq!(data.to_vec(), decompressed);
 }
 
@@ -190,13 +198,19 @@ fn test_new_compressor_invalid_level() {
     assert!(res.is_err());
     let err = res.err().unwrap();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-    assert_eq!(err.to_string(), "Compression level must be between 0 and 12");
+    assert_eq!(
+        err.to_string(),
+        "Compression level must be between 0 and 12"
+    );
 
     let res = Compressor::new(13);
     assert!(res.is_err());
     let err = res.err().unwrap();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-    assert_eq!(err.to_string(), "Compression level must be between 0 and 12");
+    assert_eq!(
+        err.to_string(),
+        "Compression level must be between 0 and 12"
+    );
 }
 
 #[test]

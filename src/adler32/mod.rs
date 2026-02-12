@@ -48,22 +48,8 @@ fn adler32_chunk(s1: &mut u32, s2: &mut u32, p: &[u8]) {
             + (b14 * 2)
             + (b15 * 1);
 
-        s1_local += b0
-            + b1
-            + b2
-            + b3
-            + b4
-            + b5
-            + b6
-            + b7
-            + b8
-            + b9
-            + b10
-            + b11
-            + b12
-            + b13
-            + b14
-            + b15;
+        s1_local +=
+            b0 + b1 + b2 + b3 + b4 + b5 + b6 + b7 + b8 + b9 + b10 + b11 + b12 + b13 + b14 + b15;
 
         unsafe {
             ptr = ptr.add(16);

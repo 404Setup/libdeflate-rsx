@@ -40,12 +40,9 @@ impl Compressor {
     }
 
     pub fn compress_zlib_into(&mut self, data: &[u8], output: &mut [u8]) -> io::Result<usize> {
-        self.compress_into_helper(
-            data,
-            output,
-            "Compression failed",
-            |c, data, out| c.compress_zlib(data, out),
-        )
+        self.compress_into_helper(data, output, "Compression failed", |c, data, out| {
+            c.compress_zlib(data, out)
+        })
     }
 
     pub fn compress_gzip(&mut self, data: &[u8]) -> io::Result<Vec<u8>> {
@@ -54,12 +51,9 @@ impl Compressor {
     }
 
     pub fn compress_gzip_into(&mut self, data: &[u8], output: &mut [u8]) -> io::Result<usize> {
-        self.compress_into_helper(
-            data,
-            output,
-            "Compression failed",
-            |c, data, out| c.compress_gzip(data, out),
-        )
+        self.compress_into_helper(data, output, "Compression failed", |c, data, out| {
+            c.compress_gzip(data, out)
+        })
     }
 
     pub fn deflate_compress_bound(&mut self, size: usize) -> usize {

@@ -10,11 +10,11 @@ fn test_parallel_compression_roundtrip() {
 
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
-    
+
     let compressed = compressor.compress_deflate(&data).unwrap();
     assert!(compressed.len() > 0);
 
     let decompressed = decompressor.decompress_deflate(&compressed, size).unwrap();
-    
+
     assert_eq!(decompressed, data);
 }

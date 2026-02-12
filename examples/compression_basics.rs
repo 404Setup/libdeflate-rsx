@@ -13,7 +13,7 @@ fn main() -> io::Result<()> {
     let mut decompressor = Decompressor::new();
 
     let decompressed_data = decompressor.decompress_deflate(&compressed_data, data.len())?;
-    
+
     assert_eq!(data.as_slice(), decompressed_data.as_slice());
     println!("Decompression successful!");
 

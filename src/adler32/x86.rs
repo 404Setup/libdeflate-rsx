@@ -116,8 +116,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_d = _mm256_setzero_si256();
 
         // Only use the heavily unrolled 256-byte loop for larger chunks.
-        // For small inputs (e.g. 1KB), the setup and prefetch overhead outweighs the benefits.
-        if chunk_n >= 2048 {
+        // For very small inputs (< 512B), the setup overhead outweighs the benefits.
+        if chunk_n >= 512 {
             let weights = _mm256_set_epi8(
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
                 24, 25, 26, 27, 28, 29, 30, 31, 32,
@@ -651,16 +651,8 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
         let mask = (1u64 << len) - 1;
         let d = _mm512_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
 
-        let s1_part = hsum_epi32_avx512(_mm512_dpbusd_epi32(
-            _mm512_setzero_si512(),
-            d,
-            ones,
-        ));
-        let s2_part_raw = hsum_epi32_avx512(_mm512_dpbusd_epi32(
-            _mm512_setzero_si512(),
-            d,
-            mults,
-        ));
+        let s1_part = hsum_epi32_avx512(_mm512_dpbusd_epi32(_mm512_setzero_si512(), d, ones));
+        let s2_part_raw = hsum_epi32_avx512(_mm512_dpbusd_epi32(_mm512_setzero_si512(), d, mults));
 
         let s2_part = s2_part_raw.wrapping_sub(((64 - len) as u32).wrapping_mul(s1_part));
         s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));
@@ -719,14 +711,38 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
                 let d7 = _mm512_loadu_si512(ptr.add(384) as *const _);
                 let d8 = _mm512_loadu_si512(ptr.add(448) as *const _);
 
-                v_s2_a = _mm512_add_epi32(v_s2_a, _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16));
-                v_s2_b = _mm512_add_epi32(v_s2_b, _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16));
-                v_s2_c = _mm512_add_epi32(v_s2_c, _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16));
-                v_s2_d = _mm512_add_epi32(v_s2_d, _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16));
-                v_s2_e = _mm512_add_epi32(v_s2_e, _mm512_madd_epi16(_mm512_maddubs_epi16(d5, mults), ones_i16));
-                v_s2_f = _mm512_add_epi32(v_s2_f, _mm512_madd_epi16(_mm512_maddubs_epi16(d6, mults), ones_i16));
-                v_s2_g = _mm512_add_epi32(v_s2_g, _mm512_madd_epi16(_mm512_maddubs_epi16(d7, mults), ones_i16));
-                v_s2_h = _mm512_add_epi32(v_s2_h, _mm512_madd_epi16(_mm512_maddubs_epi16(d8, mults), ones_i16));
+                v_s2_a = _mm512_add_epi32(
+                    v_s2_a,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16),
+                );
+                v_s2_b = _mm512_add_epi32(
+                    v_s2_b,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16),
+                );
+                v_s2_c = _mm512_add_epi32(
+                    v_s2_c,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16),
+                );
+                v_s2_d = _mm512_add_epi32(
+                    v_s2_d,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16),
+                );
+                v_s2_e = _mm512_add_epi32(
+                    v_s2_e,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d5, mults), ones_i16),
+                );
+                v_s2_f = _mm512_add_epi32(
+                    v_s2_f,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d6, mults), ones_i16),
+                );
+                v_s2_g = _mm512_add_epi32(
+                    v_s2_g,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d7, mults), ones_i16),
+                );
+                v_s2_h = _mm512_add_epi32(
+                    v_s2_h,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d8, mults), ones_i16),
+                );
 
                 let u1 = _mm512_madd_epi16(_mm512_maddubs_epi16(d1, ones_u8), ones_i16);
                 let u2 = _mm512_madd_epi16(_mm512_maddubs_epi16(d2, ones_u8), ones_i16);
@@ -769,10 +785,22 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
                 let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
                 let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
 
-                v_s2_a = _mm512_add_epi32(v_s2_a, _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16));
-                v_s2_b = _mm512_add_epi32(v_s2_b, _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16));
-                v_s2_c = _mm512_add_epi32(v_s2_c, _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16));
-                v_s2_d = _mm512_add_epi32(v_s2_d, _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16));
+                v_s2_a = _mm512_add_epi32(
+                    v_s2_a,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16),
+                );
+                v_s2_b = _mm512_add_epi32(
+                    v_s2_b,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16),
+                );
+                v_s2_c = _mm512_add_epi32(
+                    v_s2_c,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16),
+                );
+                v_s2_d = _mm512_add_epi32(
+                    v_s2_d,
+                    _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16),
+                );
 
                 let u1 = _mm512_madd_epi16(_mm512_maddubs_epi16(d1, ones_u8), ones_i16);
                 let u2 = _mm512_madd_epi16(_mm512_maddubs_epi16(d2, ones_u8), ones_i16);
@@ -807,8 +835,14 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
         while chunk_n >= 64 {
             let d = _mm512_loadu_si512(data.as_ptr() as *const _);
             v_s1_sums = _mm512_add_epi32(v_s1_sums, v_s1);
-            v_s1 = _mm512_add_epi32(v_s1, _mm512_madd_epi16(_mm512_maddubs_epi16(d, ones_u8), ones_i16));
-            v_s2 = _mm512_add_epi32(v_s2, _mm512_madd_epi16(_mm512_maddubs_epi16(d, mults), ones_i16));
+            v_s1 = _mm512_add_epi32(
+                v_s1,
+                _mm512_madd_epi16(_mm512_maddubs_epi16(d, ones_u8), ones_i16),
+            );
+            v_s2 = _mm512_add_epi32(
+                v_s2,
+                _mm512_madd_epi16(_mm512_maddubs_epi16(d, mults), ones_i16),
+            );
             data = &data[64..];
             chunk_n -= 64;
         }
@@ -855,10 +889,8 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
             _mm512_maddubs_epi16(d, ones_u8),
             ones_i16,
         ));
-        let s2_part_raw = hsum_epi32_avx512(_mm512_madd_epi16(
-            _mm512_maddubs_epi16(d, mults),
-            ones_i16,
-        ));
+        let s2_part_raw =
+            hsum_epi32_avx512(_mm512_madd_epi16(_mm512_maddubs_epi16(d, mults), ones_i16));
 
         let s2_part = s2_part_raw.wrapping_sub(((64 - len) as u32).wrapping_mul(s1_part));
         s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));
@@ -1028,16 +1060,8 @@ pub unsafe fn adler32_x86_avx512_vl(adler: u32, p: &[u8]) -> u32 {
         let mask = (1u32 << len) - 1;
         let d = _mm256_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
 
-        let s1_part = hsum_epi32_avx256(_mm256_dpbusd_epi32(
-            _mm256_setzero_si256(),
-            d,
-            ones,
-        ));
-        let s2_part_raw = hsum_epi32_avx256(_mm256_dpbusd_epi32(
-            _mm256_setzero_si256(),
-            d,
-            mults,
-        ));
+        let s1_part = hsum_epi32_avx256(_mm256_dpbusd_epi32(_mm256_setzero_si256(), d, ones));
+        let s2_part_raw = hsum_epi32_avx256(_mm256_dpbusd_epi32(_mm256_setzero_si256(), d, mults));
 
         let s2_part = s2_part_raw.wrapping_sub(((32 - len) as u32).wrapping_mul(s1_part));
         s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));

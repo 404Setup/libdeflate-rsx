@@ -362,7 +362,7 @@ fn get_match_len_func() -> MatchLenFn {
     #[cfg(target_arch = "aarch64")]
     {
         if std::arch::is_aarch64_feature_detected!("neon") {
-             return match_len_neon;
+            return match_len_neon;
         }
     }
     match_len_sw
@@ -569,7 +569,10 @@ impl MatchFinder {
         if count == 0 {
             return;
         }
-        if pos.checked_add(count + 3).map_or(true, |end| end > data.len()) {
+        if pos
+            .checked_add(count + 3)
+            .map_or(true, |end| end > data.len())
+        {
             for i in 0..count {
                 self.skip_match(data, pos + i);
             }
@@ -591,10 +594,18 @@ impl MatchFinder {
 
                 if cur_pos != -1 && (cur_pos as usize) >= self.base_offset {
                     let prev_offset = abs_pos - (cur_pos as usize);
-                    let val = if prev_offset > 0xFFFF { 0 } else { prev_offset as u16 };
-                    *self.prev_tab.get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = val;
+                    let val = if prev_offset > 0xFFFF {
+                        0
+                    } else {
+                        prev_offset as u16
+                    };
+                    *self
+                        .prev_tab
+                        .get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = val;
                 } else {
-                    *self.prev_tab.get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = 0;
+                    *self
+                        .prev_tab
+                        .get_unchecked_mut(abs_pos & (MATCHFINDER_WINDOW_SIZE - 1)) = 0;
                 }
 
                 ptr = ptr.add(1);

@@ -1,8 +1,8 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use libdeflate::{Compressor, Decompressor, adler32, crc32};
-use libdeflate::crc32::crc32_slice8;
 use libdeflate::batch;
+use libdeflate::crc32::crc32_slice8;
 use libdeflate::stream;
+use libdeflate::{Compressor, Decompressor, adler32, crc32};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -40,9 +40,13 @@ fn bench_adler32_micro(c: &mut Criterion) {
         let data = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 
-        group.bench_with_input(BenchmarkId::new("libdeflate-rs", size), &size, |b, &_size| {
-            b.iter(|| adler32(1, &data));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("libdeflate-rs", size),
+            &size,
+            |b, &_size| {
+                b.iter(|| adler32(1, &data));
+            },
+        );
 
         group.bench_with_input(BenchmarkId::new("libdeflater", size), &size, |b, &_size| {
             b.iter(|| libdeflater::adler32(&data));
@@ -69,16 +73,24 @@ fn bench_checksums(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(size as u64));
 
-        group.bench_with_input(BenchmarkId::new(format!("Adler32/libdeflate-rs {}", name), size), &size, |b, &_size| {
-            b.iter(|| adler32(1, &data));
-        });
+        group.bench_with_input(
+            BenchmarkId::new(format!("Adler32/libdeflate-rs {}", name), size),
+            &size,
+            |b, &_size| {
+                b.iter(|| adler32(1, &data));
+            },
+        );
 
-        group.bench_with_input(BenchmarkId::new(format!("Adler32/libdeflater {}", name), size), &size, |b, &_size| {
-            b.iter(|| libdeflater::adler32(&data));
-        });
+        group.bench_with_input(
+            BenchmarkId::new(format!("Adler32/libdeflater {}", name), size),
+            &size,
+            |b, &_size| {
+                b.iter(|| libdeflater::adler32(&data));
+            },
+        );
 
         if *name == "L" {
-             group.bench_with_input("CRC32/libdeflate-rs", &size, |b, &_size| {
+            group.bench_with_input("CRC32/libdeflate-rs", &size, |b, &_size| {
                 b.iter(|| crc32(0, &data));
             });
 
@@ -122,7 +134,9 @@ fn bench_compress(c: &mut Criterion) {
                 |b, &_size| {
                     let mut compressor = Compressor::new(level).unwrap();
                     b.iter(|| {
-                        compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+                        compressor
+                            .compress_deflate_into(&data, &mut out_buf)
+                            .unwrap_or(0)
                     });
                 },
             );
@@ -165,10 +179,9 @@ fn bench_decompress(c: &mut Criterion) {
         for &level in &levels {
             let mut compressor = Compressor::new(level).unwrap();
             let mut compressed_data = vec![0u8; size + size / 2 + 1024];
-            let compressed_size = compressor.compress_deflate_into(
-                &original_data,
-                &mut compressed_data,
-            ).unwrap();
+            let compressed_size = compressor
+                .compress_deflate_into(&original_data, &mut compressed_data)
+                .unwrap();
 
             let mut out_buf = vec![0u8; size];
 
@@ -180,10 +193,12 @@ fn bench_decompress(c: &mut Criterion) {
                 |b, &_size| {
                     let mut decompressor = Decompressor::new();
                     b.iter(|| {
-                        decompressor.decompress_deflate_into(
-                            &compressed_data[..compressed_size],
-                            &mut out_buf,
-                        ).unwrap_or(0)
+                        decompressor
+                            .decompress_deflate_into(
+                                &compressed_data[..compressed_size],
+                                &mut out_buf,
+                            )
+                            .unwrap_or(0)
                     });
                 },
             );
@@ -230,7 +245,9 @@ fn bench_stream(c: &mut Criterion) {
 
     let mut compressor = Compressor::new(6).unwrap();
     let mut compressed_data = vec![0u8; size + size / 2 + 1024];
-    let compressed_size = compressor.compress_deflate_into(&data, &mut compressed_data).unwrap();
+    let compressed_size = compressor
+        .compress_deflate_into(&data, &mut compressed_data)
+        .unwrap();
     let compressed_slice = &compressed_data[..compressed_size];
 
     group.bench_with_input("DeflateDecoder", &size, |b, &_size| {
@@ -238,7 +255,9 @@ fn bench_stream(c: &mut Criterion) {
             let mut decoder = stream::DeflateDecoder::new(compressed_slice);
             let mut buf = vec![0u8; 64 * 1024];
             while let Ok(n) = decoder.read(&mut buf) {
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
             }
         });
     });
@@ -294,7 +313,9 @@ fn bench_parallel_alloc(c: &mut Criterion) {
             let bound = compressor.deflate_compress_bound(size);
             let mut out_buf = vec![0u8; bound];
             b.iter(|| {
-                 compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+                compressor
+                    .compress_deflate_into(&data, &mut out_buf)
+                    .unwrap_or(0)
             });
         });
     }
@@ -311,7 +332,9 @@ fn bench_parallel_alloc(c: &mut Criterion) {
             let bound = compressor.deflate_compress_bound(size);
             let mut out_buf = vec![0u8; bound];
             b.iter(|| {
-                 compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+                compressor
+                    .compress_deflate_into(&data, &mut out_buf)
+                    .unwrap_or(0)
             });
         });
     }
@@ -329,10 +352,9 @@ fn bench_decompress_offset8(c: &mut Criterion) {
 
     let mut compressor = Compressor::new(6).unwrap();
     let mut compressed_data = vec![0u8; size + size / 2 + 1024];
-    let compressed_size = compressor.compress_deflate_into(
-        &original_data,
-        &mut compressed_data,
-    ).unwrap();
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
 
     let mut out_buf = vec![0u8; size];
 
@@ -342,10 +364,9 @@ fn bench_decompress_offset8(c: &mut Criterion) {
     group.bench_with_input("libdeflate-rs offset8", &size, |b, &_size| {
         let mut decompressor = Decompressor::new();
         b.iter(|| {
-            decompressor.decompress_deflate_into(
-                &compressed_data[..compressed_size],
-                &mut out_buf,
-            ).unwrap_or(0)
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
         });
     });
 

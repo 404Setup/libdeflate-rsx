@@ -103,10 +103,7 @@ pub unsafe fn decompress_bmi2(
                 if block_type == DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN {
                     d.bitbuf = bitbuf;
                     d.bitsleft = bitsleft;
-                    let res = d.read_dynamic_huffman_header(
-                        input,
-                        &mut in_idx,
-                    );
+                    let res = d.read_dynamic_huffman_header(input, &mut in_idx);
                     bitbuf = d.bitbuf;
                     bitsleft = d.bitsleft;
                     if res != DecompressResult::Success {
@@ -195,32 +192,32 @@ pub unsafe fn decompress_bmi2(
                         }
 
                         let out_ptr = output.as_mut_ptr();
-                        
+
                         if offset >= 16 && dest + 16 <= out_len {
-                             let v1 = std::ptr::read_unaligned(out_ptr.add(src) as *const u64);
-                             let v2 = std::ptr::read_unaligned(out_ptr.add(src + 8) as *const u64);
-                             std::ptr::write_unaligned(out_ptr.add(dest) as *mut u64, v1);
-                             std::ptr::write_unaligned(out_ptr.add(dest + 8) as *mut u64, v2);
-                             if length > 16 {
-                                 if offset >= length {
-                                     std::ptr::copy_nonoverlapping(
-                                         out_ptr.add(src + 16),
-                                         out_ptr.add(dest + 16),
-                                         length - 16,
-                                     );
-                                 } else {
-                                     let mut copied = 16;
-                                     while copied < length {
-                                         let copy_len = std::cmp::min(offset, length - copied);
-                                         std::ptr::copy_nonoverlapping(
-                                             out_ptr.add(src + copied),
-                                             out_ptr.add(dest + copied),
-                                             copy_len,
-                                         );
-                                         copied += copy_len;
-                                     }
-                                 }
-                             }
+                            let v1 = std::ptr::read_unaligned(out_ptr.add(src) as *const u64);
+                            let v2 = std::ptr::read_unaligned(out_ptr.add(src + 8) as *const u64);
+                            std::ptr::write_unaligned(out_ptr.add(dest) as *mut u64, v1);
+                            std::ptr::write_unaligned(out_ptr.add(dest + 8) as *mut u64, v2);
+                            if length > 16 {
+                                if offset >= length {
+                                    std::ptr::copy_nonoverlapping(
+                                        out_ptr.add(src + 16),
+                                        out_ptr.add(dest + 16),
+                                        length - 16,
+                                    );
+                                } else {
+                                    let mut copied = 16;
+                                    while copied < length {
+                                        let copy_len = std::cmp::min(offset, length - copied);
+                                        std::ptr::copy_nonoverlapping(
+                                            out_ptr.add(src + copied),
+                                            out_ptr.add(dest + copied),
+                                            copy_len,
+                                        );
+                                        copied += copy_len;
+                                    }
+                                }
+                            }
                         } else if offset >= length {
                             std::ptr::copy_nonoverlapping(
                                 out_ptr.add(src),
@@ -234,14 +231,24 @@ pub unsafe fn decompress_bmi2(
                             let mut copied = 0;
                             if offset >= 8 {
                                 while copied + 8 <= length {
-                                    let val = std::ptr::read_unaligned(out_ptr.add(src + copied) as *const u64);
-                                    std::ptr::write_unaligned(out_ptr.add(dest + copied) as *mut u64, val);
+                                    let val = std::ptr::read_unaligned(
+                                        out_ptr.add(src + copied) as *const u64
+                                    );
+                                    std::ptr::write_unaligned(
+                                        out_ptr.add(dest + copied) as *mut u64,
+                                        val,
+                                    );
                                     copied += 8;
                                 }
                             } else if offset >= 4 {
                                 while copied + 4 <= length {
-                                    let val = std::ptr::read_unaligned(out_ptr.add(src + copied) as *const u32);
-                                    std::ptr::write_unaligned(out_ptr.add(dest + copied) as *mut u32, val);
+                                    let val = std::ptr::read_unaligned(
+                                        out_ptr.add(src + copied) as *const u32
+                                    );
+                                    std::ptr::write_unaligned(
+                                        out_ptr.add(dest + copied) as *mut u32,
+                                        val,
+                                    );
                                     copied += 4;
                                 }
                             }
