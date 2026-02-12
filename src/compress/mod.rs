@@ -1660,17 +1660,19 @@ impl Compressor {
         LENGTH_EXTRA_BITS_TABLE[slot] as usize
     }
     fn get_offset_slot(&self, offset: usize) -> usize {
-        if offset <= 4 {
-            offset - 1
-        } else {
-            let mut off = offset - 1;
-            let mut slot = 2;
-            while off >= 4 {
-                off >>= 1;
-                slot += 2;
-            }
-            slot + (off & 1)
+        let off = (offset - 1) as u32;
+        if off < 4 {
+            return off as usize;
         }
+        // DEFLATE offset codes are grouped by powers of 2 (except small ones).
+        // Each group of 2 slots covers 2^N and 2^N + 2^(N-1).
+        // The slot index is roughly 2 * log2(offset).
+        // We calculate floor(log2(off)) using leading_zeros.
+        // For off >= 4, the MSB is at bit index l (0-indexed).
+        let l = 31 - off.leading_zeros();
+        let slot = (2 * l) as usize;
+        // The last bit of the slot is the bit below the MSB.
+        slot + ((off >> (l - 1)) as usize & 1)
     }
     fn get_offset_base(&self, slot: usize) -> usize {
         OFFSET_BASE_TABLE[slot] as usize
