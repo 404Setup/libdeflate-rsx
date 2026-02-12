@@ -1610,10 +1610,12 @@ impl Compressor {
 
     fn write_literal(&self, bs: &mut Bitstream, lit: u8) -> bool {
         let sym = lit as usize;
-        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32)
+        // Optimization: Codewords are guaranteed clean and valid.
+        unsafe { bs.write_bits_unchecked(self.litlen_codewords[sym], self.litlen_lens[sym] as u32) }
     }
     fn write_sym(&self, bs: &mut Bitstream, sym: usize) -> bool {
-        bs.write_bits(self.litlen_codewords[sym], self.litlen_lens[sym] as u32)
+        // Optimization: Codewords are guaranteed clean and valid.
+        unsafe { bs.write_bits_unchecked(self.litlen_codewords[sym], self.litlen_lens[sym] as u32) }
     }
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
         // Safe indexing: len is 3..258, table size 260.
@@ -1626,26 +1628,35 @@ impl Compressor {
             return false;
         }
         if len_extra_bits > 0 {
-            if !bs.write_bits(
-                (len - len_base as usize) as u32,
-                len_extra_bits as u32,
-            ) {
+            // Optimization: len diff is within extra bits range.
+            if !unsafe {
+                bs.write_bits_unchecked(
+                    (len - len_base as usize) as u32,
+                    len_extra_bits as u32,
+                )
+            } {
                 return false;
             }
         }
         let off_slot = self.get_offset_slot(offset);
-        if !bs.write_bits(
-            self.offset_codewords[off_slot],
-            self.offset_lens[off_slot] as u32,
-        ) {
+        // Optimization: Codewords are guaranteed clean.
+        if !unsafe {
+            bs.write_bits_unchecked(
+                self.offset_codewords[off_slot],
+                self.offset_lens[off_slot] as u32,
+            )
+        } {
             return false;
         }
         let extra_bits = self.get_offset_extra_bits(off_slot);
         if extra_bits > 0 {
-            if !bs.write_bits(
-                (offset - self.get_offset_base(off_slot)) as u32,
-                extra_bits as u32,
-            ) {
+            // Optimization: Offset diff is within extra bits range.
+            if !unsafe {
+                bs.write_bits_unchecked(
+                    (offset - self.get_offset_base(off_slot)) as u32,
+                    extra_bits as u32,
+                )
+            } {
                 return false;
             }
         }

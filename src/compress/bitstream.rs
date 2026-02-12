@@ -24,8 +24,20 @@ impl<'a> Bitstream<'a> {
         }
         // Use u64 to handle count=32 case without branching (1u32 << 32 overflows)
         let mask = ((1u64 << count) - 1) as u32;
+        unsafe { self.write_bits_unchecked(bits & mask, count) }
+    }
 
-        self.bitbuf |= ((bits & mask) as u64) << self.bitcount;
+    /// Writes bits without checking count or masking bits.
+    ///
+    /// # Safety
+    ///
+    /// * `count` must be > 0.
+    /// * `bits` must not have any bits set above `count` (i.e., `bits & !((1 << count) - 1) == 0`).
+    #[inline(always)]
+    pub unsafe fn write_bits_unchecked(&mut self, bits: u32, count: u32) -> bool {
+        debug_assert!(count > 0);
+
+        self.bitbuf |= (bits as u64) << self.bitcount;
         self.bitcount += count;
 
         if self.bitcount >= 32 {
