@@ -238,6 +238,11 @@ pub struct Compressor {
     pub offset_codewords: [u32; DEFLATE_NUM_OFFSET_SYMS],
     pub offset_lens: [u8; DEFLATE_NUM_OFFSET_SYMS],
 
+    // Combined tables for faster lookup during bitstream writing.
+    // Each entry contains: (length as u64) << 32 | (codeword as u64)
+    pub litlen_table: [u64; DEFLATE_NUM_LITLEN_SYMS],
+    pub offset_table: [u64; DEFLATE_NUM_OFFSET_SYMS],
+
     pub literal_costs: [u32; 256],
     pub length_costs: [u32; DEFLATE_MAX_MATCH_LEN + 1],
     pub offset_slot_costs: [u32; 32],
@@ -260,6 +265,8 @@ impl Compressor {
             litlen_lens: [0; DEFLATE_NUM_LITLEN_SYMS],
             offset_codewords: [0; DEFLATE_NUM_OFFSET_SYMS],
             offset_lens: [0; DEFLATE_NUM_OFFSET_SYMS],
+            litlen_table: [0; DEFLATE_NUM_LITLEN_SYMS],
+            offset_table: [0; DEFLATE_NUM_OFFSET_SYMS],
             literal_costs: [0; 256],
             length_costs: [0; DEFLATE_MAX_MATCH_LEN + 1],
             offset_slot_costs: [0; 32],
@@ -284,6 +291,17 @@ impl Compressor {
         };
         c.init_params();
         c
+    }
+
+    fn update_huffman_tables(&mut self) {
+        for i in 0..DEFLATE_NUM_LITLEN_SYMS {
+            self.litlen_table[i] =
+                (self.litlen_codewords[i] as u64) | ((self.litlen_lens[i] as u64) << 32);
+        }
+        for i in 0..DEFLATE_NUM_OFFSET_SYMS {
+            self.offset_table[i] =
+                (self.offset_codewords[i] as u64) | ((self.offset_lens[i] as u64) << 32);
+        }
     }
 
     fn init_params(&mut self) {
@@ -1166,6 +1184,7 @@ impl Compressor {
                 &mut self.offset_lens,
                 &mut self.offset_codewords,
             );
+            self.update_huffman_tables();
             if !self.write_dynamic_block_with_sequences(input, start_pos, bs, is_final) {
                 return 0;
             }
@@ -1436,6 +1455,7 @@ impl Compressor {
             &mut self.offset_lens,
             &mut self.offset_codewords,
         );
+        self.update_huffman_tables();
 
         if !self.write_dynamic_block_with_sequences(input, start_pos, bs, is_final) {
             return 0;
@@ -1606,16 +1626,20 @@ impl Compressor {
         }
         gen_codewords_from_lens(&self.litlen_lens, &mut self.litlen_codewords, 9);
         gen_codewords_from_lens(&self.offset_lens, &mut self.offset_codewords, 5);
+        self.update_huffman_tables();
     }
 
     fn write_literal(&self, bs: &mut Bitstream, lit: u8) -> bool {
         let sym = lit as usize;
         // Optimization: Codewords are guaranteed clean and valid.
-        unsafe { bs.write_bits_unchecked(self.litlen_codewords[sym], self.litlen_lens[sym] as u32) }
+        // Use combined table for single memory access.
+        let entry = unsafe { *self.litlen_table.get_unchecked(sym) };
+        unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) }
     }
     fn write_sym(&self, bs: &mut Bitstream, sym: usize) -> bool {
         // Optimization: Codewords are guaranteed clean and valid.
-        unsafe { bs.write_bits_unchecked(self.litlen_codewords[sym], self.litlen_lens[sym] as u32) }
+        let entry = unsafe { *self.litlen_table.get_unchecked(sym) };
+        unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) }
     }
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
         // Safe indexing: len is 3..258, table size 260.
@@ -1640,12 +1664,8 @@ impl Compressor {
         }
         let off_slot = self.get_offset_slot(offset);
         // Optimization: Codewords are guaranteed clean.
-        if !unsafe {
-            bs.write_bits_unchecked(
-                self.offset_codewords[off_slot],
-                self.offset_lens[off_slot] as u32,
-            )
-        } {
+        let entry = unsafe { *self.offset_table.get_unchecked(off_slot) };
+        if !unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) } {
             return false;
         }
         let extra_bits = self.get_offset_extra_bits(off_slot);
