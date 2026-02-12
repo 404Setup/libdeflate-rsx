@@ -4,7 +4,7 @@ use crate::decompress::tables::{
 };
 use crate::decompress::{
     DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN, DEFLATE_BLOCKTYPE_STATIC_HUFFMAN,
-    DEFLATE_BLOCKTYPE_UNCOMPRESSED, DecompressResult, Decompressor,
+    DEFLATE_BLOCKTYPE_UNCOMPRESSED, DecompressResult, Decompressor, prepare_pattern,
 };
 
 #[cfg(target_arch = "x86_64")]
@@ -227,54 +227,81 @@ pub unsafe fn decompress_bmi2(
                         } else if offset == 1 {
                             let b = *out_ptr.add(src);
                             std::ptr::write_bytes(out_ptr.add(dest), b, length);
+                        } else if offset < 8 {
+                            let src_ptr = out_ptr.add(src);
+                            let dest_ptr = out_ptr.add(dest);
+                            if offset == 1 || offset == 2 || offset == 4 {
+                                let pattern = prepare_pattern(offset, src_ptr);
+                                let mut i = 0;
+                                while i + 8 <= length {
+                                    std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                    i += 8;
+                                }
+                                while i < length {
+                                    *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
+                                    i += 1;
+                                }
+                            } else {
+                                let mut pat_buf = [0u8; 16];
+                                for j in 0..16 {
+                                    pat_buf[j] = *src_ptr.add(j % offset);
+                                }
+
+                                let mut patterns = [0u64; 7];
+                                let period = match offset {
+                                    3 => 3,
+                                    5 => 5,
+                                    6 => 3,
+                                    7 => 7,
+                                    _ => unreachable!(),
+                                };
+
+                                for j in 0..period {
+                                    patterns[j] = std::ptr::read_unaligned(
+                                        pat_buf.as_ptr().add((j * 8) % offset) as *const u64,
+                                    );
+                                }
+
+                                let mut i = 0;
+                                while i + 8 * period <= length {
+                                    for j in 0..period {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(i + j * 8) as *mut u64,
+                                            patterns[j],
+                                        );
+                                    }
+                                    i += 8 * period;
+                                }
+
+                                let mut j = 0;
+                                while i + 8 <= length {
+                                    std::ptr::write_unaligned(
+                                        dest_ptr.add(i) as *mut u64,
+                                        patterns[j],
+                                    );
+                                    i += 8;
+                                    j += 1;
+                                    if j == period {
+                                        j = 0;
+                                    }
+                                }
+
+                                while i < length {
+                                    *dest_ptr.add(i) = *src_ptr.add(i);
+                                    i += 1;
+                                }
+                            }
                         } else {
                             let mut copied = 0;
-                            if offset >= 8 {
-                                while copied + 8 <= length {
-                                    let val = std::ptr::read_unaligned(
-                                        out_ptr.add(src + copied) as *const u64
-                                    );
-                                    std::ptr::write_unaligned(
-                                        out_ptr.add(dest + copied) as *mut u64,
-                                        val,
-                                    );
-                                    copied += 8;
-                                }
-                            } else if offset >= 4 {
-                                while copied + 4 <= length {
-                                    let val = std::ptr::read_unaligned(
-                                        out_ptr.add(src + copied) as *const u32
-                                    );
-                                    std::ptr::write_unaligned(
-                                        out_ptr.add(dest + copied) as *mut u32,
-                                        val,
-                                    );
-                                    copied += 4;
-                                }
-                            } else if offset == 2 {
-                                let w = std::ptr::read_unaligned(out_ptr.add(src) as *const u16) as u64;
-                                let pattern = w | (w << 16) | (w << 32) | (w << 48);
-                                while copied + 8 <= length {
-                                    std::ptr::write_unaligned(
-                                        out_ptr.add(dest + copied) as *mut u64,
-                                        pattern,
-                                    );
-                                    copied += 8;
-                                }
-                            } else if offset == 3 {
-                                let b0 = *out_ptr.add(src) as u64;
-                                let b1 = *out_ptr.add(src + 1) as u64;
-                                let b2 = *out_ptr.add(src + 2) as u64;
-                                let pattern = b0 | (b1 << 8) | (b2 << 16)
-                                        | (b0 << 24) | (b1 << 32) | (b2 << 40)
-                                        | (b0 << 48) | (b1 << 56);
-                                while copied + 8 <= length {
-                                    std::ptr::write_unaligned(
-                                        out_ptr.add(dest + copied) as *mut u64,
-                                        pattern,
-                                    );
-                                    copied += 8;
-                                }
+                            while copied + 8 <= length {
+                                let val = std::ptr::read_unaligned(
+                                    out_ptr.add(src + copied) as *const u64
+                                );
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(dest + copied) as *mut u64,
+                                    val,
+                                );
+                                copied += 8;
                             }
                             while copied < length {
                                 *out_ptr.add(dest + copied) = *out_ptr.add(src + copied);
