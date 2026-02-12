@@ -213,9 +213,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let v_zero = _mm256_setzero_si256();
 
         while chunk_n >= 128 {
-            _mm_prefetch((ptr as usize + 256) as *const i8, _MM_HINT_T0);
-            _mm_prefetch((ptr as usize + 320) as *const i8, _MM_HINT_T0);
-
             let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
             let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
             let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
@@ -359,9 +356,6 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
             let v_zero = _mm256_setzero_si256();
 
             while chunk_n >= 128 {
-                _mm_prefetch((ptr as usize + 128) as *const i8, _MM_HINT_T0);
-                _mm_prefetch((ptr as usize + 192) as *const i8, _MM_HINT_T0);
-
                 let d1 = _mm256_loadu_si256(ptr as *const __m256i);
                 let d2 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
                 let d3 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
