@@ -446,6 +446,22 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
     (s2 << 16) | s1
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn hsum_epi32_avx512(v: __m512i) -> u32 {
+    let v256 = _mm256_add_epi32(
+        _mm512_extracti64x4_epi64(v, 0),
+        _mm512_extracti64x4_epi64(v, 1),
+    );
+    let v128 = _mm_add_epi32(
+        _mm256_extracti128_si256(v256, 0),
+        _mm256_extracti128_si256(v256, 1),
+    );
+    let v64 = _mm_add_epi32(v128, _mm_shuffle_epi32(v128, 0x4E));
+    let v32 = _mm_add_epi32(v64, _mm_shuffle_epi32(v64, 0xB1));
+    _mm_cvtsi128_si32(v32) as u32
+}
+
 #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
 pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
@@ -630,15 +646,27 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if data.len() >= 16 {
-        let res = adler32_x86_sse2((s2 << 16) | s1, data);
-        s1 = res & 0xFFFF;
-        s2 = res >> 16;
-    } else {
-        for &b in data {
-            s1 += b as u32;
-            s2 += s1;
-        }
+    if data.len() > 0 {
+        let len = data.len();
+        let mask = (1u64 << len) - 1;
+        let d = _mm512_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
+
+        let s1_part = hsum_epi32_avx512(_mm512_dpbusd_epi32(
+            _mm512_setzero_si512(),
+            d,
+            ones,
+        ));
+        let s2_part_raw = hsum_epi32_avx512(_mm512_dpbusd_epi32(
+            _mm512_setzero_si512(),
+            d,
+            mults,
+        ));
+
+        let s2_part = s2_part_raw.wrapping_sub(((64 - len) as u32).wrapping_mul(s1_part));
+        s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));
+        s2 = s2.wrapping_add(s2_part);
+        s1 = s1.wrapping_add(s1_part);
+
         s1 %= DIVISOR;
         s2 %= DIVISOR;
     }
@@ -818,15 +846,25 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if data.len() >= 16 {
-        let res = adler32_x86_sse2((s2 << 16) | s1, data);
-        s1 = res & 0xFFFF;
-        s2 = res >> 16;
-    } else {
-        for &b in data {
-            s1 += b as u32;
-            s2 += s1;
-        }
+    if data.len() > 0 {
+        let len = data.len();
+        let mask = (1u64 << len) - 1;
+        let d = _mm512_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
+
+        let s1_part = hsum_epi32_avx512(_mm512_madd_epi16(
+            _mm512_maddubs_epi16(d, ones_u8),
+            ones_i16,
+        ));
+        let s2_part_raw = hsum_epi32_avx512(_mm512_madd_epi16(
+            _mm512_maddubs_epi16(d, mults),
+            ones_i16,
+        ));
+
+        let s2_part = s2_part_raw.wrapping_sub(((64 - len) as u32).wrapping_mul(s1_part));
+        s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));
+        s2 = s2.wrapping_add(s2_part);
+        s1 = s1.wrapping_add(s1_part);
+
         s1 %= DIVISOR;
         s2 %= DIVISOR;
     }
