@@ -36,11 +36,17 @@ impl<'a> Bitstream<'a> {
     #[inline(always)]
     pub unsafe fn write_bits_unchecked(&mut self, bits: u32, count: u32) -> bool {
         debug_assert!(count > 0);
+        // Optimization assumes we never write more than 16 bits at a time.
+        // This ensures that `self.bitcount` (max 47 before add) + count (max 16) <= 63,
+        // preventing u64 bitbuf overflow.
+        debug_assert!(count <= 16);
 
         self.bitbuf |= (bits as u64) << self.bitcount;
         self.bitcount += count;
 
-        if self.bitcount >= 32 {
+        // Flush when we have at least 6 bytes (48 bits).
+        // This reduces store frequency compared to flushing at 4 bytes (32 bits).
+        if self.bitcount >= 48 {
             if self.out_idx + 8 <= self.output.len() {
                 unsafe {
                     std::ptr::write_unaligned(
