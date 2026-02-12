@@ -790,15 +790,28 @@ impl Decompressor {
                     } else if offset < 8 {
                         let src_ptr = out_ptr.add(src);
                         let dest_ptr = out_ptr.add(dest);
-                        let pattern = prepare_pattern(offset, src_ptr);
-                        let mut i = 0;
-                        while i + 8 <= length {
-                            std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
-                            i += 8;
-                        }
-                        while i < length {
-                            *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
-                            i += 1;
+                        if offset == 1 || offset == 2 || offset == 4 {
+                            let pattern = prepare_pattern(offset, src_ptr);
+                            let mut i = 0;
+                            while i + 8 <= length {
+                                std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                i += 8;
+                            }
+                            while i < length {
+                                *dest_ptr.add(i) = (pattern >> ((i & 7) * 8)) as u8;
+                                i += 1;
+                            }
+                        } else {
+                            let mut copied = 0;
+                            while copied < length {
+                                let copy_len = std::cmp::min(offset, length - copied);
+                                std::ptr::copy_nonoverlapping(
+                                    src_ptr.add(copied),
+                                    dest_ptr.add(copied),
+                                    copy_len,
+                                );
+                                copied += copy_len;
+                            }
                         }
                     } else {
                         let mut copied = 0;

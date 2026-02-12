@@ -224,3 +224,94 @@ fn test_compress_insufficient_space_panic_prevention() {
     assert!(res.is_err());
     assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::Other);
 }
+
+// Helper to write bits to a buffer for manual DEFLATE stream construction
+struct BitWriter {
+    data: Vec<u8>,
+    bit_buffer: u32,
+    bits_in_buffer: u32,
+}
+
+impl BitWriter {
+    fn new() -> Self {
+        Self {
+            data: Vec::new(),
+            bit_buffer: 0,
+            bits_in_buffer: 0,
+        }
+    }
+
+    fn write_bits(&mut self, value: u32, count: u32) {
+        self.bit_buffer |= value << self.bits_in_buffer;
+        self.bits_in_buffer += count;
+        while self.bits_in_buffer >= 8 {
+            self.data.push(self.bit_buffer as u8);
+            self.bit_buffer >>= 8;
+            self.bits_in_buffer -= 8;
+        }
+    }
+
+    fn write_huffman(&mut self, code: u32, len: u32) {
+        // Huffman codes are packed MSB first.
+        for i in (0..len).rev() {
+            let bit = (code >> i) & 1;
+            self.write_bits(bit, 1);
+        }
+    }
+
+    fn flush(&mut self) -> Vec<u8> {
+        if self.bits_in_buffer > 0 {
+            self.data.push(self.bit_buffer as u8);
+        }
+        self.data.clone()
+    }
+}
+
+#[test]
+fn test_offset_3_bug() {
+    let mut writer = BitWriter::new();
+
+    // Header: Final=1, Type=1 (Fixed Huffman) -> 011 binary = 3
+    writer.write_bits(3, 3);
+
+    // Literal 'A' (65): 01110001 (8 bits)
+    writer.write_huffman(0b01110001, 8);
+
+    // Literal 'B' (66): 01110010 (8 bits)
+    writer.write_huffman(0b01110010, 8);
+
+    // Literal 'C' (67): 01110011 (8 bits)
+    writer.write_huffman(0b01110011, 8);
+
+    // Match: Length 10. Code 264 (0001000, 7 bits).
+    writer.write_huffman(0b0001000, 7);
+
+    // Distance 3. Code 2 (00010, 5 bits).
+    writer.write_huffman(0b00010, 5);
+
+    // End of Block. Code 256 (0000000, 7 bits).
+    writer.write_huffman(0b0000000, 7);
+
+    let input = writer.flush();
+
+    let mut decompressor = Decompressor::new();
+    // Expected output: "ABC" + (len 10, dist 3)
+    // "ABC" -> dist 1='C', dist 2='B', dist 3='A'.
+    // Match 10: "ABCABCABCA"
+    // Total: "ABCABCABCABCA" (13 bytes)
+    let mut expected = b"ABC".to_vec();
+    expected.extend_from_slice(b"ABCABCABCA");
+
+    let result = decompressor.decompress_deflate(&input, 1024);
+
+    match result {
+        Ok(output) => {
+            if output != expected {
+                println!("Output: {:?}", String::from_utf8_lossy(&output));
+                println!("Expect: {:?}", String::from_utf8_lossy(&expected));
+                panic!("Decompression mismatch");
+            }
+        },
+        Err(e) => panic!("Decompression failed: {}", e),
+    }
+}

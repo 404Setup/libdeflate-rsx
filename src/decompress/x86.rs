@@ -243,8 +243,11 @@ pub unsafe fn decompress_bmi2(
                                 }
                             } else {
                                 let mut pat_buf = [0u8; 16];
-                                for j in 0..16 {
-                                    pat_buf[j] = *src_ptr.add(j % offset);
+                                for j in 0..offset {
+                                    pat_buf[j] = *src_ptr.add(j);
+                                }
+                                for j in offset..16 {
+                                    pat_buf[j] = pat_buf[j - offset];
                                 }
 
                                 let mut patterns = [0u64; 7];
