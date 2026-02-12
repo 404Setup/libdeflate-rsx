@@ -10,6 +10,40 @@ use crate::decompress::{
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+macro_rules! refill_bits {
+    ($input:expr, $in_idx:expr, $bitbuf:expr, $bitsleft:expr) => {
+        if $bitsleft < 32 {
+            // Check if there are at least 8 bytes (64 bits) remaining in the input.
+            // If so, we can perform a single unaligned 64-bit load.
+            if $input.len().wrapping_sub($in_idx) >= 8 {
+                // Read 64 bits from the input at the current index.
+                let word = unsafe { ($input.as_ptr().add($in_idx) as *const u64).read_unaligned() };
+                let word = u64::from_le(word);
+
+                // Add the new bits to the bit buffer.
+                // The new bits are shifted left by the number of bits already in the buffer.
+                $bitbuf |= word << $bitsleft;
+
+                // Calculate how many full bytes were consumed to fill the buffer up to 56 bits.
+                // The logic guarantees the new bit count is between 56 and 63.
+                let consumed = (63 - $bitsleft) >> 3;
+                $in_idx += consumed as usize;
+
+                // Update bitsleft. The logic `bitsleft |= 56` is a fast equivalent of
+                // `bitsleft += consumed * 8` given the constraints.
+                $bitsleft |= 56;
+            } else {
+                // Slow path: Read byte by byte if fewer than 8 bytes remain.
+                while $bitsleft < 32 && $in_idx < $input.len() {
+                    $bitbuf |= ($input[$in_idx] as u64) << $bitsleft;
+                    $in_idx += 1;
+                    $bitsleft += 8;
+                }
+            }
+        }
+    };
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2")]
 pub unsafe fn decompress_bmi2(
@@ -26,11 +60,7 @@ pub unsafe fn decompress_bmi2(
     let mut is_final_block = false;
 
     while !is_final_block {
-        while bitsleft < 32 && in_idx < in_len {
-            bitbuf |= (input[in_idx] as u64) << bitsleft;
-            in_idx += 1;
-            bitsleft += 8;
-        }
+        refill_bits!(input, in_idx, bitbuf, bitsleft);
 
         is_final_block = (bitbuf & 1) != 0;
         let block_type = ((bitbuf >> 1) & 3) as u8;
@@ -87,11 +117,7 @@ pub unsafe fn decompress_bmi2(
                 }
 
                 loop {
-                    while bitsleft < 32 && in_idx < in_len {
-                        bitbuf |= (input[in_idx] as u64) << bitsleft;
-                        in_idx += 1;
-                        bitsleft += 8;
-                    }
+                    refill_bits!(input, in_idx, bitbuf, bitsleft);
 
                     let table_idx = _bzhi_u64(bitbuf, d.litlen_tablebits as u32) as usize;
                     let mut entry = d.litlen_decode_table[table_idx];
@@ -132,11 +158,7 @@ pub unsafe fn decompress_bmi2(
                             length += _bzhi_u64(saved_bitbuf >> len, extra_bits) as usize;
                         }
 
-                        while bitsleft < 32 && in_idx < in_len {
-                            bitbuf |= (input[in_idx] as u64) << bitsleft;
-                            in_idx += 1;
-                            bitsleft += 8;
-                        }
+                        refill_bits!(input, in_idx, bitbuf, bitsleft);
 
                         let offset_idx = _bzhi_u64(bitbuf, OFFSET_TABLEBITS as u32) as usize;
                         let mut entry = d.offset_decode_table[offset_idx];
