@@ -217,6 +217,28 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
 #[inline]
 unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
+    // Optimize: Unroll loop to process 128 bytes per iteration.
+    // This reduces loop overhead and allows pipelining of loads.
+    while len + 128 <= max_len {
+        let v1 = _mm512_loadu_si512(a.add(len) as *const _);
+        let v2 = _mm512_loadu_si512(b.add(len) as *const _);
+        let mask1 = _mm512_cmpeq_epi8_mask(v1, v2);
+
+        let v3 = _mm512_loadu_si512(a.add(len + 64) as *const _);
+        let v4 = _mm512_loadu_si512(b.add(len + 64) as *const _);
+        let mask2 = _mm512_cmpeq_epi8_mask(v3, v4);
+
+        if (mask1 & mask2) == u64::MAX {
+            len += 128;
+            continue;
+        }
+
+        if mask1 != u64::MAX {
+            return len + (!mask1).trailing_zeros() as usize;
+        }
+        return len + 64 + (!mask2).trailing_zeros() as usize;
+    }
+
     while len + 64 <= max_len {
         let v1 = _mm512_loadu_si512(a.add(len) as *const _);
         let v2 = _mm512_loadu_si512(b.add(len) as *const _);
