@@ -645,3 +645,191 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
 
     (s2 << 16) | s1
 }
+
+#[target_feature(enable = "avx512f,avx512bw")]
+pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
+    let mut s1 = adler & 0xFFFF;
+    let mut s2 = adler >> 16;
+    let mut data = p;
+
+    let ones_i16 = _mm512_set1_epi16(1);
+    let ones_u8 = _mm512_set1_epi8(1);
+    let mults = _mm512_set_epi8(
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+    );
+
+    while data.len() >= 64 {
+        let n = std::cmp::min(data.len(), 4032) & !63;
+        s2 += s1 * (n as u32);
+
+        let mut v_s1 = _mm512_setzero_si512();
+        let mut v_s2 = _mm512_setzero_si512();
+        let mut v_s1_sums = _mm512_setzero_si512();
+
+        let mut chunk_n = n;
+
+        if chunk_n >= 512 {
+            let mut ptr = data.as_ptr();
+            let mut v_s2_a = _mm512_setzero_si512();
+            let mut v_s2_b = _mm512_setzero_si512();
+            let mut v_s2_c = _mm512_setzero_si512();
+            let mut v_s2_d = _mm512_setzero_si512();
+            let mut v_s2_e = _mm512_setzero_si512();
+            let mut v_s2_f = _mm512_setzero_si512();
+            let mut v_s2_g = _mm512_setzero_si512();
+            let mut v_s2_h = _mm512_setzero_si512();
+
+            while chunk_n >= 512 {
+                let d1 = _mm512_loadu_si512(ptr as *const _);
+                let d2 = _mm512_loadu_si512(ptr.add(64) as *const _);
+                let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
+                let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
+                let d5 = _mm512_loadu_si512(ptr.add(256) as *const _);
+                let d6 = _mm512_loadu_si512(ptr.add(320) as *const _);
+                let d7 = _mm512_loadu_si512(ptr.add(384) as *const _);
+                let d8 = _mm512_loadu_si512(ptr.add(448) as *const _);
+
+                v_s2_a = _mm512_add_epi32(v_s2_a, _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16));
+                v_s2_b = _mm512_add_epi32(v_s2_b, _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16));
+                v_s2_c = _mm512_add_epi32(v_s2_c, _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16));
+                v_s2_d = _mm512_add_epi32(v_s2_d, _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16));
+                v_s2_e = _mm512_add_epi32(v_s2_e, _mm512_madd_epi16(_mm512_maddubs_epi16(d5, mults), ones_i16));
+                v_s2_f = _mm512_add_epi32(v_s2_f, _mm512_madd_epi16(_mm512_maddubs_epi16(d6, mults), ones_i16));
+                v_s2_g = _mm512_add_epi32(v_s2_g, _mm512_madd_epi16(_mm512_maddubs_epi16(d7, mults), ones_i16));
+                v_s2_h = _mm512_add_epi32(v_s2_h, _mm512_madd_epi16(_mm512_maddubs_epi16(d8, mults), ones_i16));
+
+                let u1 = _mm512_madd_epi16(_mm512_maddubs_epi16(d1, ones_u8), ones_i16);
+                let u2 = _mm512_madd_epi16(_mm512_maddubs_epi16(d2, ones_u8), ones_i16);
+                let u3 = _mm512_madd_epi16(_mm512_maddubs_epi16(d3, ones_u8), ones_i16);
+                let u4 = _mm512_madd_epi16(_mm512_maddubs_epi16(d4, ones_u8), ones_i16);
+                let u5 = _mm512_madd_epi16(_mm512_maddubs_epi16(d5, ones_u8), ones_i16);
+                let u6 = _mm512_madd_epi16(_mm512_maddubs_epi16(d6, ones_u8), ones_i16);
+                let u7 = _mm512_madd_epi16(_mm512_maddubs_epi16(d7, ones_u8), ones_i16);
+                let u8 = _mm512_madd_epi16(_mm512_maddubs_epi16(d8, ones_u8), ones_i16);
+
+                let u12 = _mm512_add_epi32(u1, u2);
+                let u12_x2 = _mm512_slli_epi32(u12, 1);
+                let inc_a = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3);
+
+                let u56 = _mm512_add_epi32(u5, u6);
+                let u56_x2 = _mm512_slli_epi32(u56, 1);
+                let inc_b = _mm512_add_epi32(_mm512_add_epi32(u5, u56_x2), u7);
+
+                let u34 = _mm512_add_epi32(u3, u4);
+                let total_u_a = _mm512_add_epi32(u12, u34);
+
+                let u78 = _mm512_add_epi32(u7, u8);
+                let total_u_b = _mm512_add_epi32(u56, u78);
+
+                let u_a_x4 = _mm512_slli_epi32(total_u_a, 2);
+                let combined_inc = _mm512_add_epi32(_mm512_add_epi32(inc_a, inc_b), u_a_x4);
+
+                let s1_x8 = _mm512_slli_epi32(v_s1, 3); // v_s1 * 8
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, _mm512_add_epi32(s1_x8, combined_inc));
+
+                v_s1 = _mm512_add_epi32(v_s1, _mm512_add_epi32(total_u_a, total_u_b));
+
+                ptr = ptr.add(512);
+                chunk_n -= 512;
+            }
+
+            while chunk_n >= 256 {
+                let d1 = _mm512_loadu_si512(ptr as *const _);
+                let d2 = _mm512_loadu_si512(ptr.add(64) as *const _);
+                let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
+                let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
+
+                v_s2_a = _mm512_add_epi32(v_s2_a, _mm512_madd_epi16(_mm512_maddubs_epi16(d1, mults), ones_i16));
+                v_s2_b = _mm512_add_epi32(v_s2_b, _mm512_madd_epi16(_mm512_maddubs_epi16(d2, mults), ones_i16));
+                v_s2_c = _mm512_add_epi32(v_s2_c, _mm512_madd_epi16(_mm512_maddubs_epi16(d3, mults), ones_i16));
+                v_s2_d = _mm512_add_epi32(v_s2_d, _mm512_madd_epi16(_mm512_maddubs_epi16(d4, mults), ones_i16));
+
+                let u1 = _mm512_madd_epi16(_mm512_maddubs_epi16(d1, ones_u8), ones_i16);
+                let u2 = _mm512_madd_epi16(_mm512_maddubs_epi16(d2, ones_u8), ones_i16);
+                let u3 = _mm512_madd_epi16(_mm512_maddubs_epi16(d3, ones_u8), ones_i16);
+                let u4 = _mm512_madd_epi16(_mm512_maddubs_epi16(d4, ones_u8), ones_i16);
+
+                let s1_x4 = _mm512_slli_epi32(v_s1, 2);
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, s1_x4);
+
+                let u12 = _mm512_add_epi32(u1, u2);
+                let u12_x2 = _mm512_slli_epi32(u12, 1);
+                let inc = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3);
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, inc);
+
+                let u34 = _mm512_add_epi32(u3, u4);
+                let total_u = _mm512_add_epi32(u12, u34);
+                v_s1 = _mm512_add_epi32(v_s1, total_u);
+
+                ptr = ptr.add(256);
+                chunk_n -= 256;
+            }
+
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_a, v_s2_b));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_c, v_s2_d));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_e, v_s2_f));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_g, v_s2_h));
+
+            let processed = ptr as usize - data.as_ptr() as usize;
+            data = &data[processed..];
+        }
+
+        while chunk_n >= 64 {
+            let d = _mm512_loadu_si512(data.as_ptr() as *const _);
+            v_s1_sums = _mm512_add_epi32(v_s1_sums, v_s1);
+            v_s1 = _mm512_add_epi32(v_s1, _mm512_madd_epi16(_mm512_maddubs_epi16(d, ones_u8), ones_i16));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_madd_epi16(_mm512_maddubs_epi16(d, mults), ones_i16));
+            data = &data[64..];
+            chunk_n -= 64;
+        }
+
+        v_s2 = _mm512_add_epi32(v_s2, _mm512_slli_epi32(v_s1_sums, 6));
+
+        let v_s1_256 = _mm256_add_epi32(
+            _mm512_extracti64x4_epi64(v_s1, 0),
+            _mm512_extracti64x4_epi64(v_s1, 1),
+        );
+        let v_s2_256 = _mm256_add_epi32(
+            _mm512_extracti64x4_epi64(v_s2, 0),
+            _mm512_extracti64x4_epi64(v_s2, 1),
+        );
+
+        let v_s1_128 = _mm_add_epi32(
+            _mm256_extracti128_si256(v_s1_256, 0),
+            _mm256_extracti128_si256(v_s1_256, 1),
+        );
+        let v_s2_128 = _mm_add_epi32(
+            _mm256_extracti128_si256(v_s2_256, 0),
+            _mm256_extracti128_si256(v_s2_256, 1),
+        );
+
+        let v_s1_sum = _mm_add_epi32(v_s1_128, _mm_shuffle_epi32(v_s1_128, 0x31));
+        let v_s1_sum = _mm_add_epi32(v_s1_sum, _mm_shuffle_epi32(v_s1_sum, 0x02));
+
+        let v_s2_sum = _mm_add_epi32(v_s2_128, _mm_shuffle_epi32(v_s2_128, 0x31));
+        let v_s2_sum = _mm_add_epi32(v_s2_sum, _mm_shuffle_epi32(v_s2_sum, 0x02));
+
+        s1 += _mm_cvtsi128_si32(v_s1_sum) as u32;
+        s2 += _mm_cvtsi128_si32(v_s2_sum) as u32;
+
+        s1 %= DIVISOR;
+        s2 %= DIVISOR;
+    }
+
+    if data.len() >= 16 {
+        let res = adler32_x86_sse2((s2 << 16) | s1, data);
+        s1 = res & 0xFFFF;
+        s2 = res >> 16;
+    } else {
+        for &b in data {
+            s1 += b as u32;
+            s2 += s1;
+        }
+        s1 %= DIVISOR;
+        s2 %= DIVISOR;
+    }
+
+    (s2 << 16) | s1
+}
