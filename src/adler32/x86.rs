@@ -469,7 +469,7 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
 
         let mut chunk_n = n;
 
-        // Optimization: Unrolled loop for larger chunks (256 bytes per iter).
+        // Optimization: Unrolled loop for larger chunks (512 bytes per iter).
         // This breaks dependency chains and increases instruction level parallelism.
         if chunk_n >= 2048 {
             let mut ptr = data.as_ptr();
@@ -477,37 +477,100 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
             let mut v_s2_b = _mm512_setzero_si512();
             let mut v_s2_c = _mm512_setzero_si512();
             let mut v_s2_d = _mm512_setzero_si512();
+            let mut v_s2_e = _mm512_setzero_si512();
+            let mut v_s2_f = _mm512_setzero_si512();
+            let mut v_s2_g = _mm512_setzero_si512();
+            let mut v_s2_h = _mm512_setzero_si512();
             let v_zero = _mm512_setzero_si512();
 
+            while chunk_n >= 512 {
+                let d1 = _mm512_loadu_si512(ptr as *const _);
+                let d2 = _mm512_loadu_si512(ptr.add(64) as *const _);
+                let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
+                let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
+                let d5 = _mm512_loadu_si512(ptr.add(256) as *const _);
+                let d6 = _mm512_loadu_si512(ptr.add(320) as *const _);
+                let d7 = _mm512_loadu_si512(ptr.add(384) as *const _);
+                let d8 = _mm512_loadu_si512(ptr.add(448) as *const _);
+
+                // Update s2 accumulators independently
+                v_s2_a = _mm512_dpbusd_epi32(v_s2_a, d1, mults);
+                v_s2_b = _mm512_dpbusd_epi32(v_s2_b, d2, mults);
+                v_s2_c = _mm512_dpbusd_epi32(v_s2_c, d3, mults);
+                v_s2_d = _mm512_dpbusd_epi32(v_s2_d, d4, mults);
+                v_s2_e = _mm512_dpbusd_epi32(v_s2_e, d5, mults);
+                v_s2_f = _mm512_dpbusd_epi32(v_s2_f, d6, mults);
+                v_s2_g = _mm512_dpbusd_epi32(v_s2_g, d7, mults);
+                v_s2_h = _mm512_dpbusd_epi32(v_s2_h, d8, mults);
+
+                // Calculate sums of bytes
+                let u1 = _mm512_dpbusd_epi32(v_zero, d1, ones);
+                let u2 = _mm512_dpbusd_epi32(v_zero, d2, ones);
+                let u3 = _mm512_dpbusd_epi32(v_zero, d3, ones);
+                let u4 = _mm512_dpbusd_epi32(v_zero, d4, ones);
+                let u5 = _mm512_dpbusd_epi32(v_zero, d5, ones);
+                let u6 = _mm512_dpbusd_epi32(v_zero, d6, ones);
+                let u7 = _mm512_dpbusd_epi32(v_zero, d7, ones);
+                let u8 = _mm512_dpbusd_epi32(v_zero, d8, ones);
+
+                // Calculate inc_A for first 256 bytes
+                let u12 = _mm512_add_epi32(u1, u2);
+                let u12_x2 = _mm512_slli_epi32(u12, 1);
+                let inc_a = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3);
+
+                // Calculate inc_B for second 256 bytes
+                let u56 = _mm512_add_epi32(u5, u6);
+                let u56_x2 = _mm512_slli_epi32(u56, 1);
+                let inc_b = _mm512_add_epi32(_mm512_add_epi32(u5, u56_x2), u7);
+
+                // Calculate total sum of bytes for first 256 bytes (U_A)
+                let u34 = _mm512_add_epi32(u3, u4);
+                let total_u_a = _mm512_add_epi32(u12, u34);
+
+                // Calculate total sum of bytes for second 256 bytes (U_B)
+                let u78 = _mm512_add_epi32(u7, u8);
+                let total_u_b = _mm512_add_epi32(u56, u78);
+
+                // Update v_s1_sums
+                // combined_inc = inc_a + inc_b + 4 * U_A
+                let u_a_x4 = _mm512_slli_epi32(total_u_a, 2);
+                let combined_inc = _mm512_add_epi32(_mm512_add_epi32(inc_a, inc_b), u_a_x4);
+
+                let s1_x8 = _mm512_slli_epi32(v_s1, 3); // v_s1 * 8
+                v_s1_sums = _mm512_add_epi32(v_s1_sums, _mm512_add_epi32(s1_x8, combined_inc));
+
+                // Update v_s1
+                v_s1 = _mm512_add_epi32(v_s1, _mm512_add_epi32(total_u_a, total_u_b));
+
+                ptr = ptr.add(512);
+                chunk_n -= 512;
+            }
+
+            // Handle remaining 256-byte chunks if any (fallback to original loop)
             while chunk_n >= 256 {
                 let d1 = _mm512_loadu_si512(ptr as *const _);
                 let d2 = _mm512_loadu_si512(ptr.add(64) as *const _);
                 let d3 = _mm512_loadu_si512(ptr.add(128) as *const _);
                 let d4 = _mm512_loadu_si512(ptr.add(192) as *const _);
 
-                // Update s2 accumulators independently with local weighted sums
                 v_s2_a = _mm512_dpbusd_epi32(v_s2_a, d1, mults);
                 v_s2_b = _mm512_dpbusd_epi32(v_s2_b, d2, mults);
                 v_s2_c = _mm512_dpbusd_epi32(v_s2_c, d3, mults);
                 v_s2_d = _mm512_dpbusd_epi32(v_s2_d, d4, mults);
 
-                // Calculate sums of each 64-byte block
                 let u1 = _mm512_dpbusd_epi32(v_zero, d1, ones);
                 let u2 = _mm512_dpbusd_epi32(v_zero, d2, ones);
                 let u3 = _mm512_dpbusd_epi32(v_zero, d3, ones);
                 let u4 = _mm512_dpbusd_epi32(v_zero, d4, ones);
 
-                // Update s1_sums
-                // Formula: S_new = S_old + 4*v_s1 + 3*u1 + 2*u2 + 1*u3
-                let s1_x4 = _mm512_slli_epi32(v_s1, 2); // v_s1 * 4
+                let s1_x4 = _mm512_slli_epi32(v_s1, 2);
                 v_s1_sums = _mm512_add_epi32(v_s1_sums, s1_x4);
 
                 let u12 = _mm512_add_epi32(u1, u2);
-                let u12_x2 = _mm512_slli_epi32(u12, 1); // 2*(u1+u2)
-                let inc = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3); // 3u1 + 2u2 + u3
+                let u12_x2 = _mm512_slli_epi32(u12, 1);
+                let inc = _mm512_add_epi32(_mm512_add_epi32(u1, u12_x2), u3);
                 v_s1_sums = _mm512_add_epi32(v_s1_sums, inc);
 
-                // Update v_s1
                 let u34 = _mm512_add_epi32(u3, u4);
                 let total_u = _mm512_add_epi32(u12, u34);
                 v_s1 = _mm512_add_epi32(v_s1, total_u);
@@ -518,6 +581,8 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
 
             v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_a, v_s2_b));
             v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_c, v_s2_d));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_e, v_s2_f));
+            v_s2 = _mm512_add_epi32(v_s2, _mm512_add_epi32(v_s2_g, v_s2_h));
 
             let processed = ptr as usize - data.as_ptr() as usize;
             data = &data[processed..];
