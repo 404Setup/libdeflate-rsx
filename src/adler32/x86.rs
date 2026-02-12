@@ -96,12 +96,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let mut ptr = p.as_ptr();
     let mut len = p.len();
 
-    let weights = _mm256_set_epi8(
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-        26, 27, 28, 29, 30, 31, 32,
-    );
-    let ones_i16 = _mm256_set1_epi16(1);
-
     while len >= 64 {
         let n = std::cmp::min(len, 5552);
         let n_rounded = n & !63;
@@ -113,17 +107,24 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_inc_acc_a = _mm256_setzero_si256();
         let mut v_inc_acc_b = _mm256_setzero_si256();
 
-        let v_zero = _mm256_setzero_si256();
-
         let mut chunk_n = n_rounded;
 
-        // Use 2 accumulators instead of 4 to reduce register pressure.
+        // Use 4 accumulators to increase instruction level parallelism.
         let mut v_s2_a = _mm256_setzero_si256();
         let mut v_s2_b = _mm256_setzero_si256();
+        let mut v_s2_c = _mm256_setzero_si256();
+        let mut v_s2_d = _mm256_setzero_si256();
 
         // Only use the heavily unrolled 256-byte loop for larger chunks.
         // For small inputs (e.g. 1KB), the setup and prefetch overhead outweighs the benefits.
         if chunk_n >= 2048 {
+            let weights = _mm256_set_epi8(
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                24, 25, 26, 27, 28, 29, 30, 31, 32,
+            );
+            let ones_i16 = _mm256_set1_epi16(1);
+            let v_zero = _mm256_setzero_si256();
+
             while chunk_n >= 256 {
                 // Prefetch 2 chunks (512 bytes) ahead to hide memory latency
                 _mm_prefetch((ptr as usize + 256 + 256) as *const i8, _MM_HINT_T0);
@@ -192,13 +193,13 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
                     let s_a = _mm256_madd_epi16(p1, ones_i16);
                     let p2 = _mm256_maddubs_epi16(data_b_1, weights);
                     let s_b = _mm256_madd_epi16(p2, ones_i16);
-                    v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
+                    v_s2_c = _mm256_add_epi32(v_s2_c, _mm256_add_epi32(s_a, s_b));
 
                     let p3 = _mm256_maddubs_epi16(data_a_2, weights);
                     let s_c = _mm256_madd_epi16(p3, ones_i16);
                     let p4 = _mm256_maddubs_epi16(data_b_2, weights);
                     let s_d = _mm256_madd_epi16(p4, ones_i16);
-                    v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
+                    v_s2_d = _mm256_add_epi32(v_s2_d, _mm256_add_epi32(s_c, s_d));
                 }
 
                 ptr = ptr.add(256);
@@ -206,6 +207,13 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
                 len -= 256;
             }
         }
+
+        let weights = _mm256_set_epi8(
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+            25, 26, 27, 28, 29, 30, 31, 32,
+        );
+        let ones_i16 = _mm256_set1_epi16(1);
+        let v_zero = _mm256_setzero_si256();
 
         while chunk_n >= 128 {
             _mm_prefetch((ptr as usize + 256) as *const i8, _MM_HINT_T0);
@@ -251,7 +259,11 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             len -= 128;
         }
 
-        let mut v_s2 = _mm256_add_epi32(v_s2_a, v_s2_b);
+        let mut v_s2 = _mm256_add_epi32(
+            _mm256_add_epi32(v_s2_a, v_s2_b),
+            _mm256_add_epi32(v_s2_c, v_s2_d),
+        );
+
         let v_inc_acc = _mm256_add_epi32(v_inc_acc_a, v_inc_acc_b);
 
         let v_s1_shifted = _mm256_slli_epi32(v_s1_acc, 7);
