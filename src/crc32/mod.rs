@@ -1,4 +1,5 @@
 use crate::crc32_tables::{CRC32_SLICE1_TABLE, CRC32_SLICE8_TABLE};
+use std::sync::OnceLock;
 
 pub fn crc32_slice1(mut crc: u32, p: &[u8]) -> u32 {
     for &b in p {
@@ -40,32 +41,39 @@ mod arm;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86;
 
+type Crc32Fn = unsafe fn(u32, &[u8]) -> u32;
+
 pub fn crc32(crc: u32, slice: &[u8]) -> u32 {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx512f")
-            && is_x86_feature_detected!("avx512bw")
-            && is_x86_feature_detected!("avx512vl")
-            && is_x86_feature_detected!("vpclmulqdq")
+    static IMPL: OnceLock<Crc32Fn> = OnceLock::new();
+    let func = IMPL.get_or_init(|| {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            return unsafe { !x86::crc32_x86_vpclmulqdq_avx512_vl512(!crc, slice) };
-        }
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f")
+                && is_x86_feature_detected!("avx512bw")
+                && is_x86_feature_detected!("avx512vl")
+                && is_x86_feature_detected!("vpclmulqdq")
+            {
+                return x86::crc32_x86_vpclmulqdq_avx512_vl512;
+            }
 
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("vpclmulqdq") {
-            return unsafe { !x86::crc32_x86_vpclmulqdq_avx2(!crc, slice) };
-        }
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("vpclmulqdq") {
+                return x86::crc32_x86_vpclmulqdq_avx2;
+            }
 
-        if is_x86_feature_detected!("pclmulqdq") && is_x86_feature_detected!("sse4.1") {
-            return unsafe { !x86::crc32_x86_pclmulqdq(!crc, slice) };
+            if is_x86_feature_detected!("pclmulqdq") && is_x86_feature_detected!("sse4.1") {
+                return x86::crc32_x86_pclmulqdq;
+            }
         }
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        if std::arch::is_aarch64_feature_detected!("crc") {
-            return unsafe { !arm::crc32_arm(!crc, slice) };
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("crc") {
+                return arm::crc32_arm;
+            }
         }
-    }
-    !crc32_slice8(!crc, slice)
+        crc32_slice8
+    });
+
+    unsafe { !func(!crc, slice) }
 }
