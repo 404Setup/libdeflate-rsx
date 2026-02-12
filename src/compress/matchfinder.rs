@@ -251,6 +251,60 @@ unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize 
     len + match_len_avx2(a.add(len), b.add(len), max_len - len)
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512vl,avx512bw")]
+#[inline]
+unsafe fn match_len_avx10(a: *const u8, b: *const u8, max_len: usize) -> usize {
+    let mut len = 0;
+    // Optimize: Unroll loop to process 128 bytes per iteration using 256-bit vectors.
+    // This maintains throughput while avoiding potential frequency throttling associated
+    // with 512-bit vectors on some architectures, and aligns with AVX10 philosophy.
+    while len + 128 <= max_len {
+        let v1 = _mm256_loadu_si256(a.add(len) as *const _);
+        let v2 = _mm256_loadu_si256(b.add(len) as *const _);
+        let mask1 = _mm256_cmpeq_epi8_mask(v1, v2);
+
+        let v3 = _mm256_loadu_si256(a.add(len + 32) as *const _);
+        let v4 = _mm256_loadu_si256(b.add(len + 32) as *const _);
+        let mask2 = _mm256_cmpeq_epi8_mask(v3, v4);
+
+        let v5 = _mm256_loadu_si256(a.add(len + 64) as *const _);
+        let v6 = _mm256_loadu_si256(b.add(len + 64) as *const _);
+        let mask3 = _mm256_cmpeq_epi8_mask(v5, v6);
+
+        let v7 = _mm256_loadu_si256(a.add(len + 96) as *const _);
+        let v8 = _mm256_loadu_si256(b.add(len + 96) as *const _);
+        let mask4 = _mm256_cmpeq_epi8_mask(v7, v8);
+
+        if (mask1 & mask2 & mask3 & mask4) == 0xFFFFFFFF {
+            len += 128;
+            continue;
+        }
+
+        if mask1 != 0xFFFFFFFF {
+            return len + (!mask1).trailing_zeros() as usize;
+        }
+        if mask2 != 0xFFFFFFFF {
+            return len + 32 + (!mask2).trailing_zeros() as usize;
+        }
+        if mask3 != 0xFFFFFFFF {
+            return len + 64 + (!mask3).trailing_zeros() as usize;
+        }
+        return len + 96 + (!mask4).trailing_zeros() as usize;
+    }
+
+    while len + 32 <= max_len {
+        let v1 = _mm256_loadu_si256(a.add(len) as *const _);
+        let v2 = _mm256_loadu_si256(b.add(len) as *const _);
+        let mask = _mm256_cmpeq_epi8_mask(v1, v2);
+        if mask != 0xFFFFFFFF {
+            return len + (!mask).trailing_zeros() as usize;
+        }
+        len += 32;
+    }
+    len + match_len_sse2(a.add(len), b.add(len), max_len - len)
+}
+
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 #[inline]
@@ -282,6 +336,11 @@ unsafe fn match_len_neon(a: *const u8, b: *const u8, max_len: usize) -> usize {
 fn get_match_len_func() -> MatchLenFn {
     #[cfg(target_arch = "x86_64")]
     {
+        // Prioritize AVX10/256-bit implementation if AVX512VL is available.
+        // This avoids frequency throttling on hybrid/consumer CPUs while still using AVX512 features.
+        if is_x86_feature_detected!("avx512vl") && is_x86_feature_detected!("avx512bw") {
+            return match_len_avx10;
+        }
         if is_x86_feature_detected!("avx512bw") {
             return match_len_avx512;
         }
