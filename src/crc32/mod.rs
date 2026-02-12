@@ -8,10 +8,11 @@ pub fn crc32_slice1(mut crc: u32, p: &[u8]) -> u32 {
     crc
 }
 
-pub fn crc32_slice8(mut crc: u32, mut p: &[u8]) -> u32 {
+pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
     let mut len = p.len();
+    let mut ptr = p.as_ptr();
     while len >= 8 {
-        let v = u64::from_le(unsafe { std::ptr::read_unaligned(p.as_ptr() as *const u64) });
+        let v = u64::from_le(unsafe { std::ptr::read_unaligned(ptr as *const u64) });
         let v1 = v as u32;
         let v2 = (v >> 32) as u32;
         crc = CRC32_SLICE8_TABLE[0x700 + ((crc ^ v1) as u8) as usize]
@@ -22,10 +23,13 @@ pub fn crc32_slice8(mut crc: u32, mut p: &[u8]) -> u32 {
             ^ CRC32_SLICE8_TABLE[0x200 + ((v2 >> 8) as u8) as usize]
             ^ CRC32_SLICE8_TABLE[0x100 + ((v2 >> 16) as u8) as usize]
             ^ CRC32_SLICE8_TABLE[0x000 + ((v2 >> 24) as u8) as usize];
-        p = &p[8..];
+        unsafe {
+            ptr = ptr.add(8);
+        }
         len -= 8;
     }
-    for &b in p {
+    let remaining = unsafe { std::slice::from_raw_parts(ptr, len) };
+    for &b in remaining {
         crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
     }
     crc
