@@ -302,7 +302,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     }
 
     let remaining = core::slice::from_raw_parts(ptr, len);
-    if remaining.len() >= 16 {
+    if remaining.len() >= 32 {
         let res = adler32_x86_sse2((s2 << 16) | s1, remaining);
         s1 = res & 0xFFFF;
         s2 = res >> 16;
@@ -416,7 +416,7 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if data.len() >= 16 {
+    if data.len() >= 32 {
         let res = adler32_x86_sse2((s2 << 16) | s1, data);
         s1 = res & 0xFFFF;
         s2 = res >> 16;
