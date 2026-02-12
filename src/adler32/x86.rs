@@ -871,3 +871,182 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
 
     (s2 << 16) | s1
 }
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512vl")]
+unsafe fn hsum_epi32_avx256(v: __m256i) -> u32 {
+    let v128 = _mm_add_epi32(
+        _mm256_extracti128_si256(v, 0),
+        _mm256_extracti128_si256(v, 1),
+    );
+    let v64 = _mm_add_epi32(v128, _mm_shuffle_epi32(v128, 0x4E));
+    let v32 = _mm_add_epi32(v64, _mm_shuffle_epi32(v64, 0xB1));
+    _mm_cvtsi128_si32(v32) as u32
+}
+
+#[target_feature(enable = "avx512f,avx512bw,avx512vnni,avx512vl")]
+pub unsafe fn adler32_x86_avx512_vl(adler: u32, p: &[u8]) -> u32 {
+    let mut s1 = adler & 0xFFFF;
+    let mut s2 = adler >> 16;
+    let mut data = p;
+
+    let ones = _mm256_set1_epi8(1);
+    let mults = _mm256_set_epi8(
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
+    );
+
+    while data.len() >= 32 {
+        let n = std::cmp::min(data.len(), 4096) & !31;
+        s2 += s1 * (n as u32);
+
+        let mut v_s1 = _mm256_setzero_si256();
+        let mut v_s2 = _mm256_setzero_si256();
+        let mut v_s1_sums = _mm256_setzero_si256();
+
+        let mut chunk_n = n;
+
+        if chunk_n >= 256 {
+            let mut ptr = data.as_ptr();
+            let mut v_s2_a = _mm256_setzero_si256();
+            let mut v_s2_b = _mm256_setzero_si256();
+            let mut v_s2_c = _mm256_setzero_si256();
+            let mut v_s2_d = _mm256_setzero_si256();
+            let mut v_s2_e = _mm256_setzero_si256();
+            let mut v_s2_f = _mm256_setzero_si256();
+            let mut v_s2_g = _mm256_setzero_si256();
+            let mut v_s2_h = _mm256_setzero_si256();
+            let v_zero = _mm256_setzero_si256();
+
+            while chunk_n >= 256 {
+                let d1 = _mm256_loadu_si256(ptr as *const _);
+                let d2 = _mm256_loadu_si256(ptr.add(32) as *const _);
+                let d3 = _mm256_loadu_si256(ptr.add(64) as *const _);
+                let d4 = _mm256_loadu_si256(ptr.add(96) as *const _);
+                let d5 = _mm256_loadu_si256(ptr.add(128) as *const _);
+                let d6 = _mm256_loadu_si256(ptr.add(160) as *const _);
+                let d7 = _mm256_loadu_si256(ptr.add(192) as *const _);
+                let d8 = _mm256_loadu_si256(ptr.add(224) as *const _);
+
+                // Update s2 accumulators independently
+                v_s2_a = _mm256_dpbusd_epi32(v_s2_a, d1, mults);
+                v_s2_b = _mm256_dpbusd_epi32(v_s2_b, d2, mults);
+                v_s2_c = _mm256_dpbusd_epi32(v_s2_c, d3, mults);
+                v_s2_d = _mm256_dpbusd_epi32(v_s2_d, d4, mults);
+                v_s2_e = _mm256_dpbusd_epi32(v_s2_e, d5, mults);
+                v_s2_f = _mm256_dpbusd_epi32(v_s2_f, d6, mults);
+                v_s2_g = _mm256_dpbusd_epi32(v_s2_g, d7, mults);
+                v_s2_h = _mm256_dpbusd_epi32(v_s2_h, d8, mults);
+
+                // Calculate sums of bytes
+                let u1 = _mm256_dpbusd_epi32(v_zero, d1, ones);
+                let u2 = _mm256_dpbusd_epi32(v_zero, d2, ones);
+                let u3 = _mm256_dpbusd_epi32(v_zero, d3, ones);
+                let u4 = _mm256_dpbusd_epi32(v_zero, d4, ones);
+                let u5 = _mm256_dpbusd_epi32(v_zero, d5, ones);
+                let u6 = _mm256_dpbusd_epi32(v_zero, d6, ones);
+                let u7 = _mm256_dpbusd_epi32(v_zero, d7, ones);
+                let u8 = _mm256_dpbusd_epi32(v_zero, d8, ones);
+
+                // Calculate inc_A for first 128 bytes
+                let u12 = _mm256_add_epi32(u1, u2);
+                let u12_x2 = _mm256_slli_epi32(u12, 1);
+                let inc_a = _mm256_add_epi32(_mm256_add_epi32(u1, u12_x2), u3);
+
+                // Calculate inc_B for second 128 bytes
+                let u56 = _mm256_add_epi32(u5, u6);
+                let u56_x2 = _mm256_slli_epi32(u56, 1);
+                let inc_b = _mm256_add_epi32(_mm256_add_epi32(u5, u56_x2), u7);
+
+                // Calculate total sum of bytes for first 128 bytes (U_A)
+                let u34 = _mm256_add_epi32(u3, u4);
+                let total_u_a = _mm256_add_epi32(u12, u34);
+
+                // Calculate total sum of bytes for second 128 bytes (U_B)
+                let u78 = _mm256_add_epi32(u7, u8);
+                let total_u_b = _mm256_add_epi32(u56, u78);
+
+                // Update v_s1_sums
+                // combined_inc = inc_a + inc_b + 4 * U_A
+                let u_a_x4 = _mm256_slli_epi32(total_u_a, 2);
+                let combined_inc = _mm256_add_epi32(_mm256_add_epi32(inc_a, inc_b), u_a_x4);
+
+                let s1_x8 = _mm256_slli_epi32(v_s1, 3); // v_s1 * 8
+                v_s1_sums = _mm256_add_epi32(v_s1_sums, _mm256_add_epi32(s1_x8, combined_inc));
+
+                // Update v_s1
+                v_s1 = _mm256_add_epi32(v_s1, _mm256_add_epi32(total_u_a, total_u_b));
+
+                ptr = ptr.add(256);
+                chunk_n -= 256;
+            }
+
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_a, v_s2_b));
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_c, v_s2_d));
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_e, v_s2_f));
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_g, v_s2_h));
+
+            let processed = ptr as usize - data.as_ptr() as usize;
+            data = &data[processed..];
+        }
+
+        while chunk_n >= 32 {
+            let d = _mm256_loadu_si256(data.as_ptr() as *const _);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1);
+            v_s1 = _mm256_dpbusd_epi32(v_s1, d, ones);
+            v_s2 = _mm256_dpbusd_epi32(v_s2, d, mults);
+            data = &data[32..];
+            chunk_n -= 32;
+        }
+
+        v_s2 = _mm256_add_epi32(v_s2, _mm256_slli_epi32(v_s1_sums, 5));
+
+        let v_s1_128 = _mm_add_epi32(
+            _mm256_extracti128_si256(v_s1, 0),
+            _mm256_extracti128_si256(v_s1, 1),
+        );
+        let v_s2_128 = _mm_add_epi32(
+            _mm256_extracti128_si256(v_s2, 0),
+            _mm256_extracti128_si256(v_s2, 1),
+        );
+
+        let v_s1_sum = _mm_add_epi32(v_s1_128, _mm_shuffle_epi32(v_s1_128, 0x31));
+        let v_s1_sum = _mm_add_epi32(v_s1_sum, _mm_shuffle_epi32(v_s1_sum, 0x02));
+
+        let v_s2_sum = _mm_add_epi32(v_s2_128, _mm_shuffle_epi32(v_s2_128, 0x31));
+        let v_s2_sum = _mm_add_epi32(v_s2_sum, _mm_shuffle_epi32(v_s2_sum, 0x02));
+
+        s1 += _mm_cvtsi128_si32(v_s1_sum) as u32;
+        s2 += _mm_cvtsi128_si32(v_s2_sum) as u32;
+
+        s1 %= DIVISOR;
+        s2 %= DIVISOR;
+    }
+
+    if data.len() > 0 {
+        let len = data.len();
+        let mask = (1u32 << len) - 1;
+        let d = _mm256_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
+
+        let s1_part = hsum_epi32_avx256(_mm256_dpbusd_epi32(
+            _mm256_setzero_si256(),
+            d,
+            ones,
+        ));
+        let s2_part_raw = hsum_epi32_avx256(_mm256_dpbusd_epi32(
+            _mm256_setzero_si256(),
+            d,
+            mults,
+        ));
+
+        let s2_part = s2_part_raw.wrapping_sub(((32 - len) as u32).wrapping_mul(s1_part));
+        s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));
+        s2 = s2.wrapping_add(s2_part);
+        s1 = s1.wrapping_add(s1_part);
+
+        s1 %= DIVISOR;
+        s2 %= DIVISOR;
+    }
+
+    (s2 << 16) | s1
+}

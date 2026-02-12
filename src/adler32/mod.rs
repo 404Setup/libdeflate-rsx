@@ -135,6 +135,12 @@ pub fn adler32(adler: u32, slice: &[u8]) -> u32 {
             if is_x86_feature_detected!("avx512vnni") {
                 return x86::adler32_x86_avx512_vnni;
             }
+            if is_x86_feature_detected!("avx512vl")
+                && is_x86_feature_detected!("avx512vnni")
+                && is_x86_feature_detected!("avx512bw")
+            {
+                return x86::adler32_x86_avx512_vl;
+            }
             if is_x86_feature_detected!("avx512bw") {
                 return x86::adler32_x86_avx512;
             }
