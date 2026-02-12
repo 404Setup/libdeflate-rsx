@@ -476,7 +476,7 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
     );
 
     while data.len() >= 64 {
-        let n = std::cmp::min(data.len(), 4032) & !63;
+        let n = std::cmp::min(data.len(), 4096) & !63;
         s2 += s1 * (n as u32);
 
         let mut v_s1 = _mm512_setzero_si512();
@@ -689,7 +689,7 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
     );
 
     while data.len() >= 64 {
-        let n = std::cmp::min(data.len(), 4032) & !63;
+        let n = std::cmp::min(data.len(), 4096) & !63;
         s2 += s1 * (n as u32);
 
         let mut v_s1 = _mm512_setzero_si512();
