@@ -138,7 +138,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_c = _mm256_setzero_si256();
         let mut v_s2_d = _mm256_setzero_si256();
 
-        if chunk_n >= 512 {
+        if chunk_n >= 256 {
             let weights = _mm256_set_epi8(
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
                 24, 25, 26, 27, 28, 29, 30, 31, 32,
@@ -375,10 +375,10 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
 
         let mut chunk_n = n;
 
-        // Optimization: For chunks >= 512 bytes, use the unrolled loop (processing 128 bytes per iteration)
+        // Optimization: For chunks >= 256 bytes, use the unrolled loop (processing 128 bytes per iteration)
         // with 4 independent accumulators. This amortizes the setup overhead and increases instruction-level parallelism.
         // The previous threshold of 2048 was overly conservative. The inner loop safely handles multiples of 128 bytes.
-        if chunk_n >= 512 {
+        if chunk_n >= 256 {
             let mut ptr = data.as_ptr();
             let mut v_s2_a = _mm256_setzero_si256();
             let mut v_s2_b = _mm256_setzero_si256();

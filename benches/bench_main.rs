@@ -155,7 +155,7 @@ fn bench_crc32_micro(c: &mut Criterion) {
 }
 
 fn bench_adler32_micro(c: &mut Criterion) {
-    let sizes = [128, 512, 1024, 2048, 4096, 8192];
+    let sizes = [128, 256, 384, 512, 1024, 2048, 4096, 8192];
     let mut group = c.benchmark_group("Adler32 Micro");
 
     for size in sizes {
