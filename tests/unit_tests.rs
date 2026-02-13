@@ -366,3 +366,24 @@ fn test_crc32_tails_vs_reference() {
         assert_eq!(my_res, ref_res, "CRC32 mismatch for size {}", size);
     }
 }
+
+#[test]
+fn test_decompress_dos_attempt() {
+    let mut decompressor = Decompressor::new();
+    let data = [0u8; 10]; // Invalid data, but we just want to test allocation
+
+    // Attempt to allocate a buffer much larger than input size allows (e.g. 100MB for 10 bytes)
+    // We use 100MB to be safe on 32-bit systems while still triggering the ratio check.
+    let huge_size = 100 * 1024 * 1024;
+
+    // This call should now return an error due to the security check
+    let result = decompressor.decompress_deflate(&data, huge_size);
+
+    assert!(
+        result.is_err(),
+        "Decompression should fail for excessively large expected size"
+    );
+    let err = result.unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("exceeds safety limit"));
+}
