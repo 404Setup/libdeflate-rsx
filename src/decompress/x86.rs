@@ -3,8 +3,8 @@ use crate::decompress::tables::{
     OFFSET_TABLEBITS,
 };
 use crate::decompress::{
-    prepare_pattern, DecompressResult,
-    Decompressor, DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN, DEFLATE_BLOCKTYPE_STATIC_HUFFMAN, DEFLATE_BLOCKTYPE_UNCOMPRESSED,
+    DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN, DEFLATE_BLOCKTYPE_STATIC_HUFFMAN,
+    DEFLATE_BLOCKTYPE_UNCOMPRESSED, DecompressResult, Decompressor, prepare_pattern,
 };
 
 #[cfg(target_arch = "x86_64")]

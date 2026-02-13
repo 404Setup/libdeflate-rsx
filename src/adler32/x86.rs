@@ -79,6 +79,31 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
+    if data.len() >= 16 {
+        let d = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v_zero = _mm_setzero_si128();
+        let sad = _mm_sad_epu8(d, v_zero);
+        let sum_s1 = _mm_cvtsi128_si32(_mm_add_epi32(sad, _mm_srli_si128(sad, 8)));
+        s2 += s1 * 16;
+        s1 += sum_s1 as u32;
+
+        let d_lo = _mm_unpacklo_epi8(d, v_zero);
+        let d_hi = _mm_unpackhi_epi8(d, v_zero);
+
+        let w_lo = _mm_set_epi16(9, 10, 11, 12, 13, 14, 15, 16);
+        let w_hi = _mm_set_epi16(1, 2, 3, 4, 5, 6, 7, 8);
+
+        let s_lo = _mm_madd_epi16(d_lo, w_lo);
+        let s_hi = _mm_madd_epi16(d_hi, w_hi);
+        let s = _mm_add_epi32(s_lo, s_hi);
+
+        let s_step = _mm_add_epi32(s, _mm_srli_si128(s, 8));
+        let sum_s2 = _mm_cvtsi128_si32(_mm_add_epi32(s_step, _mm_srli_si128(s_step, 4)));
+        s2 += sum_s2 as u32;
+
+        data = &data[16..];
+    }
+
     for &b in data {
         s1 += b as u32;
         s2 += s1;
@@ -201,8 +226,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let (weights, ones_i16, v_zero) = if chunk_n >= 64 {
             (
                 _mm256_set_epi8(
-                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                    24, 25, 26, 27, 28, 29, 30, 31, 32,
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                    23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
                 ),
                 _mm256_set1_epi16(1),
                 _mm256_setzero_si256(),
@@ -312,7 +337,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     }
 
     let remaining = core::slice::from_raw_parts(ptr, len);
-    if remaining.len() >= 32 {
+    if remaining.len() >= 16 {
         let res = adler32_x86_sse2((s2 << 16) | s1, remaining);
         s1 = res & 0xFFFF;
         s2 = res >> 16;
@@ -426,7 +451,7 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if data.len() >= 32 {
+    if data.len() >= 16 {
         let res = adler32_x86_sse2((s2 << 16) | s1, data);
         s1 = res & 0xFFFF;
         s2 = res >> 16;

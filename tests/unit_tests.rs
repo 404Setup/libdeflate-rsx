@@ -1,4 +1,4 @@
-use libdeflate::{adler32, crc32, Compressor, Decompressor};
+use libdeflate::{Compressor, Decompressor, adler32, crc32};
 
 #[test]
 fn test_adler32_empty() {
