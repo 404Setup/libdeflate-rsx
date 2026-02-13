@@ -241,12 +241,12 @@ pub unsafe fn decompress_bmi2(
                                             i += 1;
                                         }
                                     } else if offset == 3 {
-                                        let b0 = *src as u64;
-                                        let b1 = *src.add(1) as u64;
-                                        let b2 = *src.add(2) as u64;
-                                        let pat0 = b0 | (b1 << 8) | (b2 << 16) | (b0 << 24) | (b1 << 32) | (b2 << 40) | (b0 << 48) | (b1 << 56);
-                                        let pat1 = b2 | (b0 << 8) | (b1 << 16) | (b2 << 24) | (b0 << 32) | (b1 << 40) | (b2 << 48) | (b0 << 56);
-                                        let pat2 = b1 | (b2 << 8) | (b0 << 16) | (b1 << 24) | (b2 << 32) | (b0 << 40) | (b1 << 48) | (b2 << 56);
+                                        let val = std::ptr::read_unaligned(src as *const u64);
+                                        let p = val & 0xFFFFFF;
+
+                                        let pat0 = p | (p << 24) | (p << 48);
+                                        let pat1 = (p >> 16) | (p << 8) | (p << 32) | (p << 56);
+                                        let pat2 = (p >> 8) | (p << 16) | (p << 40);
 
                                         let mut copied = 0;
                                         while copied + 24 <= length {
@@ -269,15 +269,14 @@ pub unsafe fn decompress_bmi2(
                                             copied += 1;
                                         }
                                     } else if offset == 5 {
-                                        let mut b = [0u64; 5];
-                                        for (i, x) in b.iter_mut().enumerate() {
-                                            *x = *src.add(i) as u64;
-                                        }
-                                        let pat0 = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24) | (b[4] << 32) | (b[0] << 40) | (b[1] << 48) | (b[2] << 56);
-                                        let pat1 = b[3] | (b[4] << 8) | (b[0] << 16) | (b[1] << 24) | (b[2] << 32) | (b[3] << 40) | (b[4] << 48) | (b[0] << 56);
-                                        let pat2 = b[1] | (b[2] << 8) | (b[3] << 16) | (b[4] << 24) | (b[0] << 32) | (b[1] << 40) | (b[2] << 48) | (b[3] << 56);
-                                        let pat3 = b[4] | (b[0] << 8) | (b[1] << 16) | (b[2] << 24) | (b[3] << 32) | (b[4] << 40) | (b[0] << 48) | (b[1] << 56);
-                                        let pat4 = b[2] | (b[3] << 8) | (b[4] << 16) | (b[0] << 24) | (b[1] << 32) | (b[2] << 40) | (b[3] << 48) | (b[4] << 56);
+                                        let val = std::ptr::read_unaligned(src as *const u64);
+                                        let p = val & 0xFFFFFFFFFF;
+
+                                        let pat0 = p | (p << 40);
+                                        let pat1 = (p >> 24) | (p << 16) | ((p & 0xFF) << 56);
+                                        let pat2 = (p >> 8) | (p << 32);
+                                        let pat3 = (p >> 32) | (p << 8) | ((p & 0xFFFF) << 48);
+                                        let pat4 = (p >> 16) | (p << 24);
 
                                         let mut copied = 0;
                                         while copied + 40 <= length {
@@ -309,13 +308,12 @@ pub unsafe fn decompress_bmi2(
                                             copied += 1;
                                         }
                                     } else if offset == 6 {
-                                        let mut b = [0u64; 6];
-                                        for (i, x) in b.iter_mut().enumerate() {
-                                            *x = *src.add(i) as u64;
-                                        }
-                                        let pat0 = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24) | (b[4] << 32) | (b[5] << 40) | (b[0] << 48) | (b[1] << 56);
-                                        let pat1 = b[2] | (b[3] << 8) | (b[4] << 16) | (b[5] << 24) | (b[0] << 32) | (b[1] << 40) | (b[2] << 48) | (b[3] << 56);
-                                        let pat2 = b[4] | (b[5] << 8) | (b[0] << 16) | (b[1] << 24) | (b[2] << 32) | (b[3] << 40) | (b[4] << 48) | (b[5] << 56);
+                                        let val = std::ptr::read_unaligned(src as *const u64);
+                                        let p = val & 0xFFFFFFFFFFFF;
+
+                                        let pat0 = p | (p << 48);
+                                        let pat1 = (p >> 16) | (p << 32);
+                                        let pat2 = (p >> 32) | (p << 16);
 
                                         let mut copied = 0;
                                         while copied + 24 <= length {
@@ -337,17 +335,16 @@ pub unsafe fn decompress_bmi2(
                                             copied += 1;
                                         }
                                     } else {
-                                        let mut b = [0u64; 7];
-                                        for (i, x) in b.iter_mut().enumerate() {
-                                            *x = *src.add(i) as u64;
-                                        }
-                                        let pat0 = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24) | (b[4] << 32) | (b[5] << 40) | (b[6] << 48) | (b[0] << 56);
-                                        let pat1 = b[1] | (b[2] << 8) | (b[3] << 16) | (b[4] << 24) | (b[5] << 32) | (b[6] << 40) | (b[0] << 48) | (b[1] << 56);
-                                        let pat2 = b[2] | (b[3] << 8) | (b[4] << 16) | (b[5] << 24) | (b[6] << 32) | (b[0] << 40) | (b[1] << 48) | (b[2] << 56);
-                                        let pat3 = b[3] | (b[4] << 8) | (b[5] << 16) | (b[6] << 24) | (b[0] << 32) | (b[1] << 40) | (b[2] << 48) | (b[3] << 56);
-                                        let pat4 = b[4] | (b[5] << 8) | (b[6] << 16) | (b[0] << 24) | (b[1] << 32) | (b[2] << 40) | (b[3] << 48) | (b[4] << 56);
-                                        let pat5 = b[5] | (b[6] << 8) | (b[0] << 16) | (b[1] << 24) | (b[2] << 32) | (b[3] << 40) | (b[4] << 48) | (b[5] << 56);
-                                        let pat6 = b[6] | (b[0] << 8) | (b[1] << 16) | (b[2] << 24) | (b[3] << 32) | (b[4] << 40) | (b[5] << 48) | (b[6] << 56);
+                                        let val = std::ptr::read_unaligned(src as *const u64);
+                                        let p = val & 0xFFFFFFFFFFFFFF;
+
+                                        let pat0 = p | (p << 56);
+                                        let pat1 = (p >> 8) | (p << 48);
+                                        let pat2 = (p >> 16) | (p << 40);
+                                        let pat3 = (p >> 24) | (p << 32);
+                                        let pat4 = (p >> 32) | (p << 24);
+                                        let pat5 = (p >> 40) | (p << 16);
+                                        let pat6 = (p >> 48) | (p << 8);
 
                                         let mut copied = 0;
                                         while copied + 56 <= length {
