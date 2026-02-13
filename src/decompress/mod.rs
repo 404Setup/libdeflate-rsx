@@ -496,6 +496,13 @@ impl Decompressor {
                     if offset == 1 || offset == 2 || offset == 4 {
                         let pattern = prepare_pattern(offset, src_ptr);
                         let mut i = 0;
+                        while i + 32 <= length {
+                            std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                            std::ptr::write_unaligned(dest_ptr.add(i + 8) as *mut u64, pattern);
+                            std::ptr::write_unaligned(dest_ptr.add(i + 16) as *mut u64, pattern);
+                            std::ptr::write_unaligned(dest_ptr.add(i + 24) as *mut u64, pattern);
+                            i += 32;
+                        }
                         while i + 8 <= length {
                             std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
                             i += 8;
@@ -842,6 +849,13 @@ impl Decompressor {
                                     }
                                 }
                                 let mut i = 0;
+                                while i + 32 <= length {
+                                    std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                    std::ptr::write_unaligned(dest_ptr.add(i + 8) as *mut u64, pattern);
+                                    std::ptr::write_unaligned(dest_ptr.add(i + 16) as *mut u64, pattern);
+                                    std::ptr::write_unaligned(dest_ptr.add(i + 24) as *mut u64, pattern);
+                                    i += 32;
+                                }
                                 while i + 8 <= length {
                                     std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
                                     i += 8;

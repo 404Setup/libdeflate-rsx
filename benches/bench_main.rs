@@ -32,6 +32,99 @@ fn bench_crc32_slice8(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_decompress_offset1(c: &mut Criterion) {
+    let path = "bench_data/data_offset1.bin";
+    if !Path::new(path).exists() {
+        return;
+    }
+    let original_data = read_file(path);
+    let size = original_data.len();
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset1");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset1", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
+fn bench_decompress_offset2(c: &mut Criterion) {
+    let path = "bench_data/data_offset2.bin";
+    if !Path::new(path).exists() {
+        return;
+    }
+    let original_data = read_file(path);
+    let size = original_data.len();
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset2");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset2", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
+fn bench_decompress_offset4(c: &mut Criterion) {
+    let path = "bench_data/data_offset4.bin";
+    if !Path::new(path).exists() {
+        return;
+    }
+    let original_data = read_file(path);
+    let size = original_data.len();
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset4");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset4", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
 fn bench_crc32_micro(c: &mut Criterion) {
     // Sizes chosen to test tail handling (assuming 16-byte SIMD blocks):
     // 20: 16*1 + 4  (tail 4, should use slice1)
@@ -478,5 +571,8 @@ criterion_group!(
     bench_decompress_offset8,
     bench_decompress_offset3,
     bench_decompress_offset5,
+    bench_decompress_offset1,
+    bench_decompress_offset2,
+    bench_decompress_offset4,
 );
 criterion_main!(benches);
