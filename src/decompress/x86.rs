@@ -244,15 +244,15 @@ pub unsafe fn decompress_bmi2(
                                         let mut copied = 0;
                                         while copied + 24 <= length {
                                             std::ptr::write_unaligned(out_next.add(copied) as *mut u64, pat0);
-                                            std::ptr::write_unaligned(out_next.add(copied + 8) as *mut u64, pat2);
-                                            std::ptr::write_unaligned(out_next.add(copied + 16) as *mut u64, pat1);
+                                            std::ptr::write_unaligned(out_next.add(copied + 8) as *mut u64, pat1);
+                                            std::ptr::write_unaligned(out_next.add(copied + 16) as *mut u64, pat2);
                                             copied += 24;
                                         }
                                         while copied + 8 <= length {
                                             let p = match copied % 24 {
                                                 0 => pat0,
-                                                8 => pat2,
-                                                _ => pat1,
+                                                8 => pat1,
+                                                _ => pat2,
                                             };
                                             std::ptr::write_unaligned(out_next.add(copied) as *mut u64, p);
                                             copied += 8;
