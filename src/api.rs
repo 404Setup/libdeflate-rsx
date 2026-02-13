@@ -176,6 +176,21 @@ impl Decompressor {
             &mut [u8],
         ) -> (crate::decompress::DecompressResult, usize, usize),
     {
+        // Security check: prevent massive allocations for small inputs (Zip bomb prevention)
+        // Max compression ratio for Deflate is ~1032:1. We use a generous limit of 2000:1 + overhead.
+        // This prevents allocating GBs of memory for small inputs.
+        let limit = data.len().saturating_mul(2000).saturating_add(4096);
+        if expected_size > limit {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Expected size {} exceeds safety limit for input size {}",
+                    expected_size,
+                    data.len()
+                ),
+            ));
+        }
+
         let mut output = vec![0u8; expected_size];
         let (res, _, size) = f(&mut self.inner, data, &mut output);
         if res == crate::decompress::DecompressResult::Success {
