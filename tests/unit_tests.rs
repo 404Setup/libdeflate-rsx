@@ -353,10 +353,10 @@ fn test_crc32_tails_vs_reference() {
     // Verify CRC32 against libdeflater (reference implementation)
     // specifically checking sizes that trigger different tail handling paths.
     let sizes = [
-        0, 1, 7, 8, 15, 16,      // Small
-        20, 28, 31, 32,          // Medium with tails
-        100, 108, 128,           // Larger with tails
-        1024, 1036               // Block + tails
+        0, 1, 7, 8, 15, 16, // Small
+        20, 28, 31, 32, // Medium with tails
+        100, 108, 128, // Larger with tails
+        1024, 1036, // Block + tails
     ];
 
     for &size in &sizes {
