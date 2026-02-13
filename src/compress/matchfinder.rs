@@ -199,6 +199,53 @@ unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
 #[inline]
 unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
+
+    // Fail fast for short matches (common case in greedy/lazy parsing)
+    if len + 32 <= max_len {
+        let v1 = _mm256_loadu_si256(a as *const __m256i);
+        let v2 = _mm256_loadu_si256(b as *const __m256i);
+        let cmp = _mm256_cmpeq_epi8(v1, v2);
+        let mask = _mm256_movemask_epi8(cmp) as u32;
+        if mask != 0xFFFFFFFF {
+            return (!mask).trailing_zeros() as usize;
+        }
+        len += 32;
+    }
+
+    while len + 128 <= max_len {
+        let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
+        let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
+        let mask1 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v1, v2)) as u32;
+
+        let v3 = _mm256_loadu_si256(a.add(len + 32) as *const __m256i);
+        let v4 = _mm256_loadu_si256(b.add(len + 32) as *const __m256i);
+        let mask2 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v3, v4)) as u32;
+
+        let v5 = _mm256_loadu_si256(a.add(len + 64) as *const __m256i);
+        let v6 = _mm256_loadu_si256(b.add(len + 64) as *const __m256i);
+        let mask3 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v5, v6)) as u32;
+
+        let v7 = _mm256_loadu_si256(a.add(len + 96) as *const __m256i);
+        let v8 = _mm256_loadu_si256(b.add(len + 96) as *const __m256i);
+        let mask4 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(v7, v8)) as u32;
+
+        if (mask1 & mask2 & mask3 & mask4) == 0xFFFFFFFF {
+            len += 128;
+            continue;
+        }
+
+        if mask1 != 0xFFFFFFFF {
+            return len + (!mask1).trailing_zeros() as usize;
+        }
+        if mask2 != 0xFFFFFFFF {
+            return len + 32 + (!mask2).trailing_zeros() as usize;
+        }
+        if mask3 != 0xFFFFFFFF {
+            return len + 64 + (!mask3).trailing_zeros() as usize;
+        }
+        return len + 96 + (!mask4).trailing_zeros() as usize;
+    }
+
     while len + 32 <= max_len {
         let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
         let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
@@ -1094,6 +1141,64 @@ mod tests {
         unsafe {
             let len = (mf.match_len)(a.as_ptr(), b.as_ptr(), 6);
             assert_eq!(len, 3);
+        }
+    }
+
+    #[test]
+    fn test_match_len_avx2_explicit() {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx2") {
+            // Create a buffer large enough to test 128-byte unrolling
+            let mut a = vec![0u8; 300];
+            let mut b = vec![0u8; 300];
+            for i in 0..300 {
+                a[i] = (i % 256) as u8;
+                b[i] = (i % 256) as u8;
+            }
+
+            unsafe {
+                // Test > 128 bytes match
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 200);
+
+                // Test exact 128 bytes match
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 128);
+                assert_eq!(len, 128);
+
+                // Test < 128 bytes match
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 100);
+                assert_eq!(len, 100);
+
+                // Test mismatch in first 32 bytes
+                b[10] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 10);
+                b[10] = a[10]; // Reset
+
+                // Test mismatch in second 32 bytes (offset 40)
+                b[40] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 40);
+                b[40] = a[40]; // Reset
+
+                // Test mismatch in third 32 bytes (offset 70)
+                b[70] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 70);
+                b[70] = a[70]; // Reset
+
+                // Test mismatch in fourth 32 bytes (offset 100)
+                b[100] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 100);
+                b[100] = a[100]; // Reset
+
+                // Test mismatch after 128 bytes (offset 130)
+                b[130] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 130);
+                b[130] = a[130]; // Reset
+            }
         }
     }
 
