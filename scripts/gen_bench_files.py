@@ -45,6 +45,7 @@ def main():
     generate_offset1("bench_data/data_offset1.bin", 1024 * 1024)
     generate_offset2("bench_data/data_offset2.bin", 1024 * 1024)
     generate_offset4("bench_data/data_offset4.bin", 1024 * 1024)
+    generate_offset9("bench_data/data_offset9.bin", 1024 * 1024)
 
 def generate_offset1(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
@@ -129,6 +130,22 @@ def generate_offset8(filename, target_size):
 def generate_offset5(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12345"
+
+    with open(filename, 'wb') as f:
+        bytes_written = 0
+        chunk_size = 1024 * 1024
+        large_chunk = pattern * (chunk_size // len(pattern) + 1)
+        large_chunk = large_chunk[:chunk_size]
+
+        while bytes_written < target_size:
+            remaining = target_size - bytes_written
+            write_amt = min(remaining, len(large_chunk))
+            f.write(large_chunk[:write_amt])
+            bytes_written += write_amt
+
+def generate_offset9(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    pattern = b"123456789"
 
     with open(filename, 'wb') as f:
         bytes_written = 0
