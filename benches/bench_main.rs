@@ -32,6 +32,35 @@ fn bench_crc32_slice8(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_crc32_micro(c: &mut Criterion) {
+    // Sizes chosen to test tail handling (assuming 16-byte SIMD blocks):
+    // 20: 16*1 + 4  (tail 4, should use slice1)
+    // 28: 16*1 + 12 (tail 12, should use slice8 + slice1)
+    // 100: 16*6 + 4 (tail 4, should use slice1)
+    // 108: 16*6 + 12 (tail 12, should use slice8 + slice1)
+    // 1024: 16*64 (tail 0)
+    let sizes = [20, 28, 100, 108, 1024];
+    let mut group = c.benchmark_group("CRC32 Micro");
+
+    for size in sizes {
+        let data = vec![0u8; size];
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input(
+            BenchmarkId::new("libdeflate-rs", size),
+            &size,
+            |b, &_size| {
+                b.iter(|| crc32(0, &data));
+            },
+        );
+
+        group.bench_with_input(BenchmarkId::new("libdeflater", size), &size, |b, &_size| {
+            b.iter(|| libdeflater::crc32(&data));
+        });
+    }
+    group.finish();
+}
+
 fn bench_adler32_micro(c: &mut Criterion) {
     let sizes = [128, 512, 1024, 2048, 4096, 8192];
     let mut group = c.benchmark_group("Adler32 Micro");
@@ -445,6 +474,7 @@ criterion_group!(
     bench_batch,
     bench_parallel_alloc,
     bench_adler32_micro,
+    bench_crc32_micro,
     bench_decompress_offset8,
     bench_decompress_offset3,
     bench_decompress_offset5,

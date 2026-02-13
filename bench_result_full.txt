@@ -1,0 +1,70 @@
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/bench_main.rs (target/release/deps/bench_main-3950439fa902122e)
+Gnuplot not found, using plotters backend
+Benchmarking Checksums/Adler32/libdeflate-rs XXS/1024
+Benchmarking Checksums/Adler32/libdeflate-rs XXS/1024: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflate-rs XXS/1024: Collecting 10 samples in estimated 5.0000 s (104M iterations)
+Benchmarking Checksums/Adler32/libdeflate-rs XXS/1024: Analyzing
+Checksums/Adler32/libdeflate-rs XXS/1024
+                        time:   [48.054 ns 60.152 ns 67.410 ns]
+                        thrpt:  [14.147 GiB/s 15.854 GiB/s 19.846 GiB/s]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+Benchmarking Checksums/Adler32/libdeflater XXS/1024
+Benchmarking Checksums/Adler32/libdeflater XXS/1024: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflater XXS/1024: Collecting 10 samples in estimated 5.0000 s (102M iterations)
+Benchmarking Checksums/Adler32/libdeflater XXS/1024: Analyzing
+Checksums/Adler32/libdeflater XXS/1024
+                        time:   [47.580 ns 47.760 ns 47.952 ns]
+                        thrpt:  [19.888 GiB/s 19.968 GiB/s 20.043 GiB/s]
+Found 3 outliers among 10 measurements (30.00%)
+  2 (20.00%) low mild
+  1 (10.00%) high mild
+Benchmarking Checksums/Adler32/libdeflate-rs S/65536
+Benchmarking Checksums/Adler32/libdeflate-rs S/65536: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflate-rs S/65536: Collecting 10 samples in estimated 5.0000 s (2.0M iterations)
+Benchmarking Checksums/Adler32/libdeflate-rs S/65536: Analyzing
+Checksums/Adler32/libdeflate-rs S/65536
+                        time:   [2.4876 µs 2.5054 µs 2.5357 µs]
+                        thrpt:  [24.070 GiB/s 24.362 GiB/s 24.536 GiB/s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking Checksums/Adler32/libdeflater S/65536
+Benchmarking Checksums/Adler32/libdeflater S/65536: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflater S/65536: Collecting 10 samples in estimated 5.0002 s (1.7M iterations)
+Benchmarking Checksums/Adler32/libdeflater S/65536: Analyzing
+Checksums/Adler32/libdeflater S/65536
+                        time:   [2.9697 µs 3.1646 µs 3.4567 µs]
+                        thrpt:  [17.657 GiB/s 19.287 GiB/s 20.552 GiB/s]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+Benchmarking Checksums/Adler32/libdeflate-rs L/16777216
+Benchmarking Checksums/Adler32/libdeflate-rs L/16777216: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflate-rs L/16777216: Collecting 10 samples in estimated 5.0423 s (5005 iterations)
+Benchmarking Checksums/Adler32/libdeflate-rs L/16777216: Analyzing
+Checksums/Adler32/libdeflate-rs L/16777216
+                        time:   [987.89 µs 1.0132 ms 1.0624 ms]
+                        thrpt:  [14.707 GiB/s 15.421 GiB/s 15.817 GiB/s]
+Benchmarking Checksums/Adler32/libdeflater L/16777216
+Benchmarking Checksums/Adler32/libdeflater L/16777216: Warming up for 3.0000 s
+Benchmarking Checksums/Adler32/libdeflater L/16777216: Collecting 10 samples in estimated 5.0408 s (4675 iterations)
+Benchmarking Checksums/Adler32/libdeflater L/16777216: Analyzing
+Checksums/Adler32/libdeflater L/16777216
+                        time:   [1.0419 ms 1.0531 ms 1.0671 ms]
+                        thrpt:  [14.643 GiB/s 14.837 GiB/s 14.997 GiB/s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking Checksums/CRC32/libdeflate-rs
+Benchmarking Checksums/CRC32/libdeflate-rs: Warming up for 3.0000 s
+Benchmarking Checksums/CRC32/libdeflate-rs: Collecting 10 samples in estimated 5.0557 s (4180 iterations)
+Benchmarking Checksums/CRC32/libdeflate-rs: Analyzing
+Checksums/CRC32/libdeflate-rs
+                        time:   [1.1837 ms 1.2095 ms 1.2283 ms]
+                        thrpt:  [12.720 GiB/s 12.918 GiB/s 13.201 GiB/s]
+Benchmarking Checksums/CRC32/libdeflater
+Benchmarking Checksums/CRC32/libdeflater: Warming up for 3.0000 s
+Benchmarking Checksums/CRC32/libdeflater: Collecting 10 samples in estimated 5.0405 s (4730 iterations)
+Benchmarking Checksums/CRC32/libdeflater: Analyzing
+Checksums/CRC32/libdeflater
+                        time:   [1.0404 ms 1.0541 ms 1.0677 ms]
+                        thrpt:  [14.634 GiB/s 14.824 GiB/s 15.018 GiB/s]

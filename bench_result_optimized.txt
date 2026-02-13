@@ -1,0 +1,127 @@
+   Compiling libdeflate v1.25.0 (/app)
+    Finished `bench` profile [optimized] target(s) in 42.66s
+     Running benches/bench_main.rs (target/release/deps/bench_main-3950439fa902122e)
+Gnuplot not found, using plotters backend
+Benchmarking CRC32 Micro/libdeflate-rs/20
+Benchmarking CRC32 Micro/libdeflate-rs/20: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflate-rs/20: Collecting 10 samples in estimated 5.0000 s (580M iterations)
+Benchmarking CRC32 Micro/libdeflate-rs/20: Analyzing
+CRC32 Micro/libdeflate-rs/20
+                        time:   [8.6398 ns 8.7417 ns 8.8031 ns]
+                        thrpt:  [2.1159 GiB/s 2.1308 GiB/s 2.1559 GiB/s]
+                 change:
+                        time:   [-17.446% -16.750% -15.968%] (p = 0.00 < 0.05)
+                        thrpt:  [+19.002% +20.120% +21.132%]
+                        Performance has improved.
+Benchmarking CRC32 Micro/libdeflater/20
+Benchmarking CRC32 Micro/libdeflater/20: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflater/20: Collecting 10 samples in estimated 5.0000 s (753M iterations)
+Benchmarking CRC32 Micro/libdeflater/20: Analyzing
+CRC32 Micro/libdeflater/20
+                        time:   [6.3990 ns 6.4181 ns 6.4519 ns]
+                        thrpt:  [2.8870 GiB/s 2.9022 GiB/s 2.9108 GiB/s]
+                 change:
+                        time:   [-1.2169% -0.5533% +0.1645%] (p = 0.15 > 0.05)
+                        thrpt:  [-0.1643% +0.5564% +1.2319%]
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking CRC32 Micro/libdeflate-rs/28
+Benchmarking CRC32 Micro/libdeflate-rs/28: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflate-rs/28: Collecting 10 samples in estimated 5.0000 s (353M iterations)
+Benchmarking CRC32 Micro/libdeflate-rs/28: Analyzing
+CRC32 Micro/libdeflate-rs/28
+                        time:   [14.172 ns 15.273 ns 16.861 ns]
+                        thrpt:  [1.5466 GiB/s 1.7074 GiB/s 1.8400 GiB/s]
+                 change:
+                        time:   [-49.461% -47.670% -44.679%] (p = 0.00 < 0.05)
+                        thrpt:  [+80.762% +91.093% +97.866%]
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking CRC32 Micro/libdeflater/28
+Benchmarking CRC32 Micro/libdeflater/28: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflater/28: Collecting 10 samples in estimated 5.0000 s (651M iterations)
+Benchmarking CRC32 Micro/libdeflater/28: Analyzing
+CRC32 Micro/libdeflater/28
+                        time:   [6.6669 ns 6.7232 ns 6.7854 ns]
+                        thrpt:  [3.8431 GiB/s 3.8786 GiB/s 3.9114 GiB/s]
+                 change:
+                        time:   [+4.1365% +4.7832% +5.5340%] (p = 0.00 < 0.05)
+                        thrpt:  [-5.2438% -4.5648% -3.9722%]
+                        Performance has regressed.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking CRC32 Micro/libdeflate-rs/100
+Benchmarking CRC32 Micro/libdeflate-rs/100: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflate-rs/100: Collecting 10 samples in estimated 5.0000 s (276M iterations)
+Benchmarking CRC32 Micro/libdeflate-rs/100: Analyzing
+CRC32 Micro/libdeflate-rs/100
+                        time:   [18.033 ns 18.080 ns 18.136 ns]
+                        thrpt:  [5.1354 GiB/s 5.1512 GiB/s 5.1645 GiB/s]
+                 change:
+                        time:   [-0.0914% +0.6999% +1.7173%] (p = 0.18 > 0.05)
+                        thrpt:  [-1.6883% -0.6950% +0.0915%]
+                        No change in performance detected.
+Benchmarking CRC32 Micro/libdeflater/100
+Benchmarking CRC32 Micro/libdeflater/100: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflater/100: Collecting 10 samples in estimated 5.0000 s (436M iterations)
+Benchmarking CRC32 Micro/libdeflater/100: Analyzing
+CRC32 Micro/libdeflater/100
+                        time:   [10.996 ns 11.030 ns 11.055 ns]
+                        thrpt:  [8.4245 GiB/s 8.4433 GiB/s 8.4696 GiB/s]
+                 change:
+                        time:   [-0.8802% -0.1412% +0.5340%] (p = 0.72 > 0.05)
+                        thrpt:  [-0.5312% +0.1414% +0.8880%]
+                        No change in performance detected.
+Benchmarking CRC32 Micro/libdeflate-rs/108
+Benchmarking CRC32 Micro/libdeflate-rs/108: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflate-rs/108: Collecting 10 samples in estimated 5.0000 s (206M iterations)
+Benchmarking CRC32 Micro/libdeflate-rs/108: Analyzing
+CRC32 Micro/libdeflate-rs/108
+                        time:   [23.989 ns 24.074 ns 24.237 ns]
+                        thrpt:  [4.1499 GiB/s 4.1781 GiB/s 4.1928 GiB/s]
+                 change:
+                        time:   [-35.224% -34.764% -34.266%] (p = 0.00 < 0.05)
+                        thrpt:  [+52.129% +53.289% +54.377%]
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking CRC32 Micro/libdeflater/108
+Benchmarking CRC32 Micro/libdeflater/108: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflater/108: Collecting 10 samples in estimated 5.0000 s (451M iterations)
+Benchmarking CRC32 Micro/libdeflater/108: Analyzing
+CRC32 Micro/libdeflater/108
+                        time:   [10.998 ns 11.109 ns 11.215 ns]
+                        thrpt:  [8.9687 GiB/s 9.0540 GiB/s 9.1459 GiB/s]
+                 change:
+                        time:   [+0.1883% +0.9837% +1.8985%] (p = 0.04 < 0.05)
+                        thrpt:  [-1.8632% -0.9741% -0.1879%]
+                        Change within noise threshold.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+Benchmarking CRC32 Micro/libdeflate-rs/1024
+Benchmarking CRC32 Micro/libdeflate-rs/1024: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflate-rs/1024: Collecting 10 samples in estimated 5.0000 s (82M iterations)
+Benchmarking CRC32 Micro/libdeflate-rs/1024: Analyzing
+CRC32 Micro/libdeflate-rs/1024
+                        time:   [61.057 ns 61.195 ns 61.328 ns]
+                        thrpt:  [15.550 GiB/s 15.584 GiB/s 15.619 GiB/s]
+                 change:
+                        time:   [-13.648% -7.0605% +0.0970%] (p = 0.08 > 0.05)
+                        thrpt:  [-0.0969% +7.5969% +15.805%]
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking CRC32 Micro/libdeflater/1024
+Benchmarking CRC32 Micro/libdeflater/1024: Warming up for 3.0000 s
+Benchmarking CRC32 Micro/libdeflater/1024: Collecting 10 samples in estimated 5.0000 s (93M iterations)
+Benchmarking CRC32 Micro/libdeflater/1024: Analyzing
+CRC32 Micro/libdeflater/1024
+                        time:   [52.659 ns 52.855 ns 52.975 ns]
+                        thrpt:  [18.002 GiB/s 18.043 GiB/s 18.111 GiB/s]
+                 change:
+                        time:   [-1.2122% -0.6498% -0.1479%] (p = 0.04 < 0.05)
+                        thrpt:  [+0.1481% +0.6541% +1.2271%]
+                        Change within noise threshold.
