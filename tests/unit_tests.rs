@@ -347,3 +347,22 @@ fn test_offset_3_large_match() {
         Err(e) => panic!("Decompression failed: {}", e),
     }
 }
+
+#[test]
+fn test_crc32_tails_vs_reference() {
+    // Verify CRC32 against libdeflater (reference implementation)
+    // specifically checking sizes that trigger different tail handling paths.
+    let sizes = [
+        0, 1, 7, 8, 15, 16,      // Small
+        20, 28, 31, 32,          // Medium with tails
+        100, 108, 128,           // Larger with tails
+        1024, 1036               // Block + tails
+    ];
+
+    for &size in &sizes {
+        let data: Vec<u8> = (0..size).map(|i| (i % 255) as u8).collect();
+        let my_res = crc32(0, &data);
+        let ref_res = libdeflater::crc32(&data);
+        assert_eq!(my_res, ref_res, "CRC32 mismatch for size {}", size);
+    }
+}

@@ -110,7 +110,9 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
 
     crc = _mm_extract_epi32(x0, 2) as u32;
 
-    if len > 0 {
+    if len >= 8 {
+        crc = crate::crc32::crc32_slice8(crc, data);
+    } else if len > 0 {
         crc = crate::crc32::crc32_slice1(crc, data);
     }
 
