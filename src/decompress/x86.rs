@@ -278,6 +278,23 @@ pub unsafe fn decompress_bmi2(
                                             );
                                             copied += 24;
                                         }
+                                        // Handle tail by writing remaining 8-byte patterns if possible.
+                                        // This avoids falling back to the slower byte-by-byte loop for
+                                        // short remainders (e.g. 15 bytes).
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat0,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat1,
+                                            );
+                                            copied += 8;
+                                        }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
                                             copied += 1;
@@ -353,6 +370,35 @@ pub unsafe fn decompress_bmi2(
                                             );
                                             copied += 40;
                                         }
+                                        // Handle tail by writing remaining 8-byte patterns if possible.
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat0,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat1,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat2,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat3,
+                                            );
+                                            copied += 8;
+                                        }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
                                             copied += 1;
@@ -403,6 +449,21 @@ pub unsafe fn decompress_bmi2(
                                                 pat2,
                                             );
                                             copied += 24;
+                                        }
+                                        // Handle tail by writing remaining 8-byte patterns if possible.
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat0,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat1,
+                                            );
+                                            copied += 8;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
@@ -502,6 +563,49 @@ pub unsafe fn decompress_bmi2(
                                                 pat6,
                                             );
                                             copied += 56;
+                                        }
+                                        // Handle tail by writing remaining 8-byte patterns if possible.
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat0,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat1,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat2,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat3,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat4,
+                                            );
+                                            copied += 8;
+                                        }
+                                        if copied + 8 <= length {
+                                            std::ptr::write_unaligned(
+                                                dest_ptr.add(copied) as *mut u64,
+                                                pat5,
+                                            );
+                                            copied += 8;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
