@@ -54,16 +54,24 @@ impl BatchDecompressor {
         inputs
             .par_iter()
             .zip(max_out_sizes.par_iter())
-            .map_init(Decompressor::new, |decompressor, (&input, &max_size)| {
-                let mut output = vec![0u8; max_size];
-                let (res, _, size) = decompressor.decompress(input, &mut output);
-                if res == DecompressResult::Success {
-                    output.truncate(size);
-                    Some(output)
-                } else {
-                    None
-                }
-            })
+            .map_init(
+                || (Decompressor::new(), Vec::new()),
+                |(decompressor, buffer), (&input, &max_size)| {
+                    if buffer.capacity() < max_size {
+                        buffer.reserve(max_size.saturating_sub(buffer.len()));
+                    }
+                    unsafe {
+                        buffer.set_len(max_size);
+                    }
+
+                    let (res, _, size) = decompressor.decompress(input, buffer);
+                    if res == DecompressResult::Success {
+                        Some(buffer[..size].to_vec())
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect()
     }
 }
