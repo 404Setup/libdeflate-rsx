@@ -1,4 +1,5 @@
 import os
+import random
 
 def get_random_data(size):
     base_pattern = bytearray()
@@ -50,154 +51,76 @@ def main():
     generate_offset11("bench_data/data_offset11.bin", 1024 * 1024)
     generate_offset12("bench_data/data_offset12.bin", 1024 * 1024)
 
-def generate_offset1(filename, target_size):
+    # Small match variants
+    # For offset N, we want matches of length N (or close to N).
+    # Pattern P (len N) + Pattern P (len N) + X.
+    # Match len N, offset N.
+    generate_offset_small("bench_data/data_offset3_small.bin", 1024 * 1024, b"123")
+    generate_offset_small("bench_data/data_offset9_small.bin", 1024 * 1024, b"123456789")
+
+def generate_offset_small(filename, target_size, pattern):
     print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1"
 
     with open(filename, 'wb') as f:
         bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
         while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+            f.write(pattern)
+            f.write(pattern)
+            # Break match with random literal
+            f.write(bytes([random.randint(0, 255)]))
+            bytes_written += len(pattern) * 2 + 1
+
+def generate_offset1(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    pattern = b"1"
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset12(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"123456789012"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset2(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset4(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"1234"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset3(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"123"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset8(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12345678"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset5(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12345"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset9(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"123456789"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset10(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"1234567890"
-
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
+    write_pattern(filename, target_size, pattern)
 
 def generate_offset11(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12345678901"
+    write_pattern(filename, target_size, pattern)
 
+def write_pattern(filename, target_size, pattern):
     with open(filename, 'wb') as f:
         bytes_written = 0
         chunk_size = 1024 * 1024
