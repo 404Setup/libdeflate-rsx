@@ -247,6 +247,7 @@ pub struct Compressor {
 
     pub litlen_table: [u64; DEFLATE_NUM_LITLEN_SYMS],
     pub offset_table: [u64; DEFLATE_NUM_OFFSET_SYMS],
+    pub match_len_table: [u64; DEFLATE_MAX_MATCH_LEN + 1],
 
     pub literal_costs: [u32; 256],
     pub length_costs: [u32; DEFLATE_MAX_MATCH_LEN + 1],
@@ -272,6 +273,7 @@ impl Compressor {
             offset_lens: [0; DEFLATE_NUM_OFFSET_SYMS],
             litlen_table: [0; DEFLATE_NUM_LITLEN_SYMS],
             offset_table: [0; DEFLATE_NUM_OFFSET_SYMS],
+            match_len_table: [0; DEFLATE_MAX_MATCH_LEN + 1],
             literal_costs: [0; 256],
             length_costs: [0; DEFLATE_MAX_MATCH_LEN + 1],
             offset_slot_costs: [0; 32],
@@ -306,6 +308,22 @@ impl Compressor {
         for i in 0..DEFLATE_NUM_OFFSET_SYMS {
             self.offset_table[i] =
                 (self.offset_codewords[i] as u64) | ((self.offset_lens[i] as u64) << 32);
+        }
+
+        for len in 3..=DEFLATE_MAX_MATCH_LEN {
+            let len_info = unsafe { *LENGTH_WRITE_TABLE.get_unchecked(len) };
+            let slot = (len_info >> 24) as usize;
+            let extra = (len_info >> 16) as u8;
+            let base = len_info as u16;
+
+            let huff_entry = unsafe { *self.litlen_table.get_unchecked(257 + slot) };
+            let code = huff_entry as u16;
+            let huff_len = (huff_entry >> 32) as u8;
+
+            self.match_len_table[len] = (code as u64)
+                | ((huff_len as u64) << 16)
+                | ((extra as u64) << 24)
+                | ((base as u64) << 32);
         }
     }
 
@@ -1640,21 +1658,22 @@ impl Compressor {
         unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) }
     }
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
-        let len_info = LENGTH_WRITE_TABLE[len];
-        let len_slot = (len_info >> 24) as usize;
-        let len_extra_bits = ((len_info >> 16) & 0xFF) as u8;
-        let len_base = (len_info & 0xFFFF) as u16;
+        let entry = unsafe { *self.match_len_table.get_unchecked(len) };
+        let code = entry as u16 as u32;
+        let huff_len = (entry >> 16) as u8 as u32;
 
-        if !self.write_sym(bs, 257 + len_slot) {
+        if !unsafe { bs.write_bits_unchecked(code, huff_len) } {
             return false;
         }
-        if len_extra_bits > 0 {
-            if !unsafe {
-                bs.write_bits_unchecked((len - len_base as usize) as u32, len_extra_bits as u32)
-            } {
+
+        let extra_bits = (entry >> 24) as u8 as u32;
+        if extra_bits > 0 {
+            let base = (entry >> 32) as u16 as u32;
+            if !unsafe { bs.write_bits_unchecked((len as u32).wrapping_sub(base), extra_bits) } {
                 return false;
             }
         }
+
         let off_slot = self.get_offset_slot(offset);
         let entry = unsafe { *self.offset_table.get_unchecked(off_slot) };
         if !unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) } {

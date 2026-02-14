@@ -67,8 +67,8 @@ const OFFSET7_MASKS: [u8; 112] = [
 ];
 // LCM(12, 16) = 48. 3 vectors.
 const OFFSET12_MASKS: [u8; 48] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6,
-    7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5,
+    6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
 ];
 
 #[cfg(target_arch = "x86_64")]
@@ -277,18 +277,33 @@ pub unsafe fn decompress_bmi2(
                                     if offset == 1 || offset == 2 || offset == 4 {
                                         let v_pattern = match offset {
                                             1 => _mm_set1_epi8(*src as i8),
-                                            2 => _mm_set1_epi16(std::ptr::read_unaligned(src as *const u16) as i16),
-                                            4 => _mm_set1_epi32(std::ptr::read_unaligned(src as *const u32) as i32),
+                                            2 => _mm_set1_epi16(std::ptr::read_unaligned(
+                                                src as *const u16,
+                                            )
+                                                as i16),
+                                            4 => _mm_set1_epi32(std::ptr::read_unaligned(
+                                                src as *const u32,
+                                            )
+                                                as i32),
                                             _ => std::hint::unreachable_unchecked(),
                                         };
                                         let mut i = 0;
                                         while i + 32 <= length {
-                                            _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
-                                            _mm_storeu_si128(out_next.add(i + 16) as *mut __m128i, v_pattern);
+                                            _mm_storeu_si128(
+                                                out_next.add(i) as *mut __m128i,
+                                                v_pattern,
+                                            );
+                                            _mm_storeu_si128(
+                                                out_next.add(i + 16) as *mut __m128i,
+                                                v_pattern,
+                                            );
                                             i += 32;
                                         }
                                         if i + 16 <= length {
-                                            _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
+                                            _mm_storeu_si128(
+                                                out_next.add(i) as *mut __m128i,
+                                                v_pattern,
+                                            );
                                             i += 16;
                                         }
                                         let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
@@ -308,18 +323,28 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src as *const u32);
                                         let v_pat = _mm_cvtsi32_si128(val as i32);
                                         let masks_ptr = OFFSET3_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 48 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             copied += 48;
                                         }
@@ -328,9 +353,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -342,26 +373,42 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET5_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 80 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 48) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 64) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
                                             );
                                             copied += 80;
                                         }
@@ -370,9 +417,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -384,18 +437,28 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET6_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 48 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             copied += 48;
                                         }
@@ -404,48 +467,77 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src.add(copied);
                                             copied += 1;
                                         }
-                                    } else { // offset == 7
+                                    } else {
+                                        // offset == 7
                                         let dest_ptr = out_next;
                                         let val = std::ptr::read_unaligned(src as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET7_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 112 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 48) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 64) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 80) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(5))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(5)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 96) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(6))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(6)),
+                                                ),
                                             );
                                             copied += 112;
                                         }
@@ -454,9 +546,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -469,12 +567,21 @@ pub unsafe fn decompress_bmi2(
                                     let v_pattern = _mm_set1_epi64x(val as i64);
                                     let mut i = 0;
                                     while i + 32 <= length {
-                                        _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
-                                        _mm_storeu_si128(out_next.add(i + 16) as *mut __m128i, v_pattern);
+                                        _mm_storeu_si128(
+                                            out_next.add(i) as *mut __m128i,
+                                            v_pattern,
+                                        );
+                                        _mm_storeu_si128(
+                                            out_next.add(i + 16) as *mut __m128i,
+                                            v_pattern,
+                                        );
                                         i += 32;
                                     }
                                     if i + 16 <= length {
-                                        _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
+                                        _mm_storeu_si128(
+                                            out_next.add(i) as *mut __m128i,
+                                            v_pattern,
+                                        );
                                         i += 16;
                                     }
                                     let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
@@ -495,42 +602,70 @@ pub unsafe fn decompress_bmi2(
 
                                     let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
                                     let masks_ptr = OFFSET9_MASKS.as_ptr() as *const __m128i;
-                                    let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+                                    let v_base =
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
 
                                     let mut copied = 0;
                                     while copied + 144 <= length {
-                                        _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                        _mm_storeu_si128(
+                                            dest_ptr.add(copied) as *mut __m128i,
+                                            v_base,
+                                        );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 16) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(1))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(1)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 32) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(2))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(2)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 48) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(3))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(3)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 64) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(4))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(4)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 80) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(5))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(5)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 96) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(6))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(6)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 112) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(7))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(7)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 128) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(8))),
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(8)),
+                                            ),
                                         );
                                         copied += 144;
                                     }
@@ -540,7 +675,10 @@ pub unsafe fn decompress_bmi2(
                                         let v = if idx == 0 {
                                             v_base
                                         } else {
-                                            _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            _mm_shuffle_epi8(
+                                                v_base,
+                                                _mm_loadu_si128(masks_ptr.add(idx)),
+                                            )
                                         };
                                         _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
                                         copied += 16;
@@ -555,18 +693,28 @@ pub unsafe fn decompress_bmi2(
                                     let src_ptr = src;
                                     let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
                                     let masks_ptr = OFFSET12_MASKS.as_ptr() as *const __m128i;
-                                    let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+                                    let v_base =
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
 
                                     let mut copied = 0;
                                     while copied + 48 <= length {
-                                        _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                        _mm_storeu_si128(
+                                            dest_ptr.add(copied) as *mut __m128i,
+                                            v_base,
+                                        );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 16) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(1))),
+                                            _mm_shuffle_epi8(
+                                                v_src,
+                                                _mm_loadu_si128(masks_ptr.add(1)),
+                                            ),
                                         );
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + 32) as *mut __m128i,
-                                            _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(2))),
+                                            _mm_shuffle_epi8(
+                                                v_src,
+                                                _mm_loadu_si128(masks_ptr.add(2)),
+                                            ),
                                         );
                                         copied += 48;
                                     }
@@ -575,7 +723,10 @@ pub unsafe fn decompress_bmi2(
                                         let v = if idx == 0 {
                                             v_base
                                         } else {
-                                            _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            _mm_shuffle_epi8(
+                                                v_src,
+                                                _mm_loadu_si128(masks_ptr.add(idx)),
+                                            )
                                         };
                                         _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
                                         copied += 16;
@@ -745,10 +896,7 @@ pub unsafe fn decompress_bmi2(
                                     i += 32;
                                 }
                                 while i + 8 <= length {
-                                    std::ptr::write_unaligned(
-                                        dest_ptr.add(i) as *mut u64,
-                                        pattern,
-                                    );
+                                    std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
                                     i += 8;
                                 }
                                 while i < length {
@@ -773,10 +921,7 @@ pub unsafe fn decompress_bmi2(
                                 }
                                 let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
                                 while i + 8 <= length {
-                                    std::ptr::write_unaligned(
-                                        dest_ptr.add(i) as *mut u64,
-                                        pattern,
-                                    );
+                                    std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
                                     i += 8;
                                 }
                                 while i < length {
@@ -789,18 +934,28 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src_ptr as *const u32);
                                         let v_pat = _mm_cvtsi32_si128(val as i32);
                                         let masks_ptr = OFFSET3_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 48 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             copied += 48;
                                         }
@@ -809,9 +964,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -823,26 +984,42 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src_ptr as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET5_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 80 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 48) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 64) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
                                             );
                                             copied += 80;
                                         }
@@ -851,9 +1028,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -865,18 +1048,28 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src_ptr as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET6_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 48 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             copied += 48;
                                         }
@@ -885,9 +1078,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -899,34 +1098,56 @@ pub unsafe fn decompress_bmi2(
                                         let val = std::ptr::read_unaligned(src_ptr as *const u64);
                                         let v_pat = _mm_cvtsi64_si128(val as i64);
                                         let masks_ptr = OFFSET7_MASKS.as_ptr() as *const __m128i;
-                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
                                         while copied + 112 <= length {
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 16) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 32) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 48) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 64) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 80) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(5))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(5)),
+                                                ),
                                             );
                                             _mm_storeu_si128(
                                                 dest_ptr.add(copied + 96) as *mut __m128i,
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(6))),
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(6)),
+                                                ),
                                             );
                                             copied += 112;
                                         }
@@ -935,9 +1156,15 @@ pub unsafe fn decompress_bmi2(
                                             let v = if idx == 0 {
                                                 v_base
                                             } else {
-                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                                _mm_shuffle_epi8(
+                                                    v_pat,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
                                             };
-                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
                                             copied += 16;
                                         }
                                         while copied < length {
@@ -1039,7 +1266,10 @@ pub unsafe fn decompress_bmi2(
                                     let v = if idx == 0 {
                                         v_base
                                     } else {
-                                        _mm_shuffle_epi8(v_base, _mm_loadu_si128(masks_ptr.add(idx)))
+                                        _mm_shuffle_epi8(
+                                            v_base,
+                                            _mm_loadu_si128(masks_ptr.add(idx)),
+                                        )
                                     };
                                     _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
                                     copied += 16;
