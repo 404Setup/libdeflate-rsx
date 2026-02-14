@@ -376,12 +376,15 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
         let mut chunk_n = n;
 
         // Optimization: For chunks >= 256 bytes, use the unrolled loop (processing 128 bytes per iteration)
-        // with 4 independent accumulators. This amortizes the setup overhead and increases instruction-level parallelism.
+        // with 4 independent accumulators. This amortizes the setup overhead and increases instruction-level parallelism
+        // by breaking dependency chains for `vpdpbusd` (typical latency 5 cycles).
         // The previous threshold of 2048 was overly conservative. The inner loop safely handles multiples of 128 bytes.
         if chunk_n >= 256 {
             let mut ptr = data.as_ptr();
             let mut v_s2_a = _mm256_setzero_si256();
             let mut v_s2_b = _mm256_setzero_si256();
+            let mut v_s2_c = _mm256_setzero_si256();
+            let mut v_s2_d = _mm256_setzero_si256();
             let v_zero = _mm256_setzero_si256();
 
             while chunk_n >= 128 {
@@ -397,8 +400,8 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
 
                 v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, d1, mults);
                 v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, d2, mults);
-                v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, d3, mults);
-                v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, d4, mults);
+                v_s2_c = _mm256_dpbusd_avx_epi32(v_s2_c, d3, mults);
+                v_s2_d = _mm256_dpbusd_avx_epi32(v_s2_d, d4, mults);
 
                 let s1_x4 = _mm256_slli_epi32(v_s1, 2);
                 v_s1_sums = _mm256_add_epi32(v_s1_sums, s1_x4);
@@ -416,7 +419,13 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
                 ptr = ptr.add(128);
                 chunk_n -= 128;
             }
-            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(v_s2_a, v_s2_b));
+            v_s2 = _mm256_add_epi32(
+                v_s2,
+                _mm256_add_epi32(
+                    _mm256_add_epi32(v_s2_a, v_s2_b),
+                    _mm256_add_epi32(v_s2_c, v_s2_d),
+                ),
+            );
             let processed = ptr as usize - data.as_ptr() as usize;
             data = &data[processed..];
         }
