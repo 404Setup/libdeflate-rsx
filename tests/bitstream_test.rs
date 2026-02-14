@@ -21,9 +21,7 @@ fn test_write_bits_large_count() {
         output_len = bs.out_idx;
     }
 
-    let out_slice = unsafe {
-        std::slice::from_raw_parts(output.as_ptr() as *const u8, output_len)
-    };
+    let out_slice = unsafe { std::slice::from_raw_parts(output.as_ptr() as *const u8, output_len) };
 
     println!("Output: {:?}", out_slice);
 
