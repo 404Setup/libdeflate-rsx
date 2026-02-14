@@ -162,10 +162,24 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
         let x0_high = _mm_clmulepi64_si128(x0, mults_128b, 0x11);
         x0 = _mm_xor_si128(x3, _mm_xor_si128(x0_low, x0_high));
     } else {
-        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-        x0 = _mm_xor_si128(x0, v0);
-        data = &data[16..];
-        len -= 16;
+        if len >= 48 {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+            let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+            x0 = _mm_xor_si128(x0, v0);
+
+            let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
+            let t1 = fold_vec128(x0, v2, mults_256b);
+            x0 = fold_vec128(v1, t1, mults_128b);
+
+            data = &data[48..];
+            len -= 48;
+        } else {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            x0 = _mm_xor_si128(x0, v0);
+            data = &data[16..];
+            len -= 16;
+        }
     }
 
     while len >= 16 {
