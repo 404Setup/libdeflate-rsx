@@ -594,7 +594,15 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
     x1 = _mm_clmulepi64_si128(x1, barrett_reduction_constants, 0x10);
     x0 = _mm_xor_si128(x0, x1);
 
-    _mm_extract_epi32(x0, 2) as u32
+    let mut res = _mm_extract_epi32(x0, 2) as u32;
+
+    if len >= 8 {
+        res = crate::crc32::crc32_slice8(res, data);
+    } else if len > 0 {
+        res = crate::crc32::crc32_slice1(res, data);
+    }
+
+    res
 }
 
 #[inline(always)]
@@ -763,5 +771,13 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
     x1 = _mm_clmulepi64_si128(x1, barrett_reduction_constants, 0x10);
     x0 = _mm_xor_si128(x0, x1);
 
-    _mm_extract_epi32(x0, 2) as u32
+    let mut res = _mm_extract_epi32(x0, 2) as u32;
+
+    if len >= 8 {
+        res = crate::crc32::crc32_slice8(res, data);
+    } else if len > 0 {
+        res = crate::crc32::crc32_slice1(res, data);
+    }
+
+    res
 }
