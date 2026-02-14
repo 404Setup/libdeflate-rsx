@@ -319,6 +319,24 @@ pub unsafe fn decompress_bmi2(
                                             // destructively within a 16-byte chunk.
                                             // Reads from `src + copied` (which is `dst + copied - offset`)
                                             // are valid because we are at least 16 bytes into the match, and `offset >= 16`.
+                                            while copied + 64 <= length {
+                                                let v1 = _mm_loadu_si128(src.add(copied) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+                                                let v2 = _mm_loadu_si128(src.add(copied + 16) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+                                                let v3 = _mm_loadu_si128(src.add(copied + 32) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v3);
+                                                let v4 = _mm_loadu_si128(src.add(copied + 48) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v4);
+                                                copied += 64;
+                                            }
+                                            while copied + 32 <= length {
+                                                let v1 = _mm_loadu_si128(src.add(copied) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+                                                let v2 = _mm_loadu_si128(src.add(copied + 16) as *const __m128i);
+                                                _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+                                                copied += 32;
+                                            }
                                             while copied + 16 <= length {
                                                 let v = _mm_loadu_si128(
                                                     src.add(copied) as *const __m128i
