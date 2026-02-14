@@ -118,6 +118,14 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let mut ptr = p.as_ptr();
     let mut len = p.len();
 
+    // Optimization: Hoist vector constants out of the main loop to avoid redundant loads.
+    let weights = _mm256_set_epi8(
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        24, 25, 26, 27, 28, 29, 30, 31, 32,
+    );
+    let ones_i16 = _mm256_set1_epi16(1);
+    let v_zero = _mm256_setzero_si256();
+
     while len >= 64 {
         let n = std::cmp::min(len, 5552);
         let n_rounded = n & !63;
@@ -135,13 +143,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_b = _mm256_setzero_si256();
         let mut v_s2_c = _mm256_setzero_si256();
         let mut v_s2_d = _mm256_setzero_si256();
-
-        let weights = _mm256_set_epi8(
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-            24, 25, 26, 27, 28, 29, 30, 31, 32,
-        );
-        let ones_i16 = _mm256_set1_epi16(1);
-        let v_zero = _mm256_setzero_si256();
 
         if chunk_n >= 256 {
             while chunk_n >= 256 {
