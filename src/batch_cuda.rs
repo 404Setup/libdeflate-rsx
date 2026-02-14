@@ -65,7 +65,8 @@ impl CudaBatchCompressor {
             // Ensure there is enough free memory on the device before allocation.
             // Estimate memory needed: input + offsets + output + output_sizes
             // Output bound: similar to input size (conservative estimate)
-            let output_bound = crate::compress::Compressor::deflate_compress_bound(total_input_size);
+            let output_bound =
+                crate::compress::Compressor::deflate_compress_bound(total_input_size);
 
             // Note: Explicit memory check removed as CudaDevice::mem_get_info is not directly available/verified.
             // Allocation will fail with OOM error if insufficient memory.
