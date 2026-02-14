@@ -404,6 +404,139 @@ pub unsafe fn decompress_bmi2(
                                         *out_next.add(i) = (pattern >> ((i & 7) * 8)) as u8;
                                         i += 1;
                                     }
+                                } else if offset == 9 {
+                                    let dest_ptr = out_next;
+                                    let src_ptr = src;
+                                    let mut buf = [0u8; 16];
+                                    let v = std::ptr::read_unaligned(src_ptr as *const u64);
+                                    let b8 = *src_ptr.add(8);
+                                    std::ptr::write_unaligned(buf.as_mut_ptr() as *mut u64, v);
+                                    buf[8] = b8;
+                                    std::ptr::copy_nonoverlapping(
+                                        buf.as_ptr(),
+                                        buf.as_mut_ptr().add(9),
+                                        7,
+                                    );
+
+                                    let p0 = std::ptr::read_unaligned(buf.as_ptr().add(0) as *const u64);
+                                    let p1 = std::ptr::read_unaligned(buf.as_ptr().add(8) as *const u64);
+                                    let p2 = std::ptr::read_unaligned(buf.as_ptr().add(7) as *const u64);
+                                    let p3 = std::ptr::read_unaligned(buf.as_ptr().add(6) as *const u64);
+                                    let p4 = std::ptr::read_unaligned(buf.as_ptr().add(5) as *const u64);
+                                    let p5 = std::ptr::read_unaligned(buf.as_ptr().add(4) as *const u64);
+                                    let p6 = std::ptr::read_unaligned(buf.as_ptr().add(3) as *const u64);
+                                    let p7 = std::ptr::read_unaligned(buf.as_ptr().add(2) as *const u64);
+                                    let p8 = std::ptr::read_unaligned(buf.as_ptr().add(1) as *const u64);
+
+                                    let mut copied = 0;
+                                    while copied + 72 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p0,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 8) as *mut u64,
+                                            p1,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 16) as *mut u64,
+                                            p2,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 24) as *mut u64,
+                                            p3,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 32) as *mut u64,
+                                            p4,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 40) as *mut u64,
+                                            p5,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 48) as *mut u64,
+                                            p6,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 56) as *mut u64,
+                                            p7,
+                                        );
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied + 64) as *mut u64,
+                                            p8,
+                                        );
+                                        copied += 72;
+                                    }
+
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p0,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p1,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p2,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p3,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p4,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p5,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p6,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p7,
+                                        );
+                                        copied += 8;
+                                    }
+                                    if copied + 8 <= length {
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(copied) as *mut u64,
+                                            p8,
+                                        );
+                                        copied += 8;
+                                    }
+
+                                    while copied < length {
+                                        *dest_ptr.add(copied) = *src_ptr.add(copied);
+                                        copied += 1;
+                                    }
                                 } else {
                                     let mut copied = 0;
                                     while copied + 8 <= length {
