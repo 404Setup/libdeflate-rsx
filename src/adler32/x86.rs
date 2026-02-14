@@ -11,6 +11,12 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
     let mut s2 = adler >> 16;
     let mut data = p;
 
+    let mults_a = _mm_set_epi16(25, 26, 27, 28, 29, 30, 31, 32);
+    let mults_b = _mm_set_epi16(17, 18, 19, 20, 21, 22, 23, 24);
+    let mults_c = _mm_set_epi16(9, 10, 11, 12, 13, 14, 15, 16);
+    let mults_d = _mm_set_epi16(1, 2, 3, 4, 5, 6, 7, 8);
+    let v_zero = _mm_setzero_si128();
+
     while data.len() >= 32 {
         let mut n = std::cmp::min(data.len(), 4096);
         n &= !31;
@@ -23,8 +29,6 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
         let mut v_byte_sums_b = _mm_setzero_si128();
         let mut v_byte_sums_c = _mm_setzero_si128();
         let mut v_byte_sums_d = _mm_setzero_si128();
-
-        let v_zero = _mm_setzero_si128();
 
         let mut chunk_n = n;
         while chunk_n >= 32 {
@@ -46,11 +50,6 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
             data = &data[32..];
             chunk_n -= 32;
         }
-
-        let mults_a = _mm_set_epi16(25, 26, 27, 28, 29, 30, 31, 32);
-        let mults_b = _mm_set_epi16(17, 18, 19, 20, 21, 22, 23, 24);
-        let mults_c = _mm_set_epi16(9, 10, 11, 12, 13, 14, 15, 16);
-        let mults_d = _mm_set_epi16(1, 2, 3, 4, 5, 6, 7, 8);
 
         let mut v_s2 = _mm_add_epi32(
             _mm_madd_epi16(v_byte_sums_a, mults_a),
@@ -81,7 +80,6 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
 
     if data.len() >= 16 {
         let d = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-        let v_zero = _mm_setzero_si128();
         let sad = _mm_sad_epu8(d, v_zero);
         let sum_s1 = _mm_cvtsi128_si32(_mm_add_epi32(sad, _mm_srli_si128(sad, 8)));
         s2 += s1 * 16;
@@ -138,14 +136,14 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_c = _mm256_setzero_si256();
         let mut v_s2_d = _mm256_setzero_si256();
 
-        if chunk_n >= 256 {
-            let weights = _mm256_set_epi8(
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30, 31, 32,
-            );
-            let ones_i16 = _mm256_set1_epi16(1);
-            let v_zero = _mm256_setzero_si256();
+        let weights = _mm256_set_epi8(
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31, 32,
+        );
+        let ones_i16 = _mm256_set1_epi16(1);
+        let v_zero = _mm256_setzero_si256();
 
+        if chunk_n >= 256 {
             while chunk_n >= 256 {
                 {
                     let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
@@ -222,23 +220,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
                 len -= 256;
             }
         }
-
-        let (weights, ones_i16, v_zero) = if chunk_n >= 64 {
-            (
-                _mm256_set_epi8(
-                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                    23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-                ),
-                _mm256_set1_epi16(1),
-                _mm256_setzero_si256(),
-            )
-        } else {
-            (
-                _mm256_undefined_si256(),
-                _mm256_undefined_si256(),
-                _mm256_undefined_si256(),
-            )
-        };
 
         while chunk_n >= 128 {
             let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
