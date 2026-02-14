@@ -90,32 +90,23 @@ const OFFSET11_MASKS: [u8; 176] = [
 
 // LCM(15, 16) = 240. 15 vectors.
 const OFFSET15_MASKS: [u8; 240] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0,
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1,
-    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2,
-    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3,
-    4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4,
-    5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6,
-    7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7,
-    8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8,
-    9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-    12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-    13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-    14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7,
+    8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3,
+    4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
 ];
 
 // LCM(14, 16) = 112. 7 vectors.
 const OFFSET14_MASKS: [u8; 112] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1,
-    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3,
-    4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5,
-    6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7,
-    8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-    12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1,
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2,
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
 ];
 
 // LCM(13, 16) = 208. 13 vectors.
@@ -1099,63 +1090,66 @@ pub unsafe fn decompress_bmi2(
                                                 dest_ptr.add(copied) as *mut __m128i,
                                                 v_base,
                                             );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 16) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(1)),
-                                            ),
-                                        );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 32) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(2)),
-                                            ),
-                                        );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 48) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(3)),
-                                            ),
-                                        );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 64) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(4)),
-                                            ),
-                                        );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 80) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(5)),
-                                            ),
-                                        );
-                                        _mm_storeu_si128(
-                                            dest_ptr.add(copied + 96) as *mut __m128i,
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(6)),
-                                            ),
-                                        );
-                                        copied += 112;
-                                    }
-                                    while copied + 16 <= length {
-                                        let idx = (copied % 112) / 16;
-                                        let v = if idx == 0 {
-                                            v_base
-                                        } else {
-                                            _mm_shuffle_epi8(
-                                                v_src,
-                                                _mm_loadu_si128(masks_ptr.add(idx)),
-                                            )
-                                        };
-                                        _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
-                                        copied += 16;
-                                    }
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 80) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(5)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 96) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(6)),
+                                                ),
+                                            );
+                                            copied += 112;
+                                        }
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 112) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
+                                            };
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
+                                            copied += 16;
+                                        }
                                     }
                                     while copied < length {
                                         *dest_ptr.add(copied) = *src_ptr.add(copied);
@@ -1721,14 +1715,10 @@ pub unsafe fn decompress_bmi2(
                             if length >= 16 {
                                 let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
                                 let masks_ptr = OFFSET13_MASKS.as_ptr() as *const __m128i;
-                                let v_base =
-                                    _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+                                let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
 
                                 while copied + 208 <= length {
-                                    _mm_storeu_si128(
-                                        dest_ptr.add(copied) as *mut __m128i,
-                                        v_base,
-                                    );
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
                                     for i in 1..13 {
                                         _mm_storeu_si128(
                                             dest_ptr.add(copied + i * 16) as *mut __m128i,
@@ -1745,15 +1735,9 @@ pub unsafe fn decompress_bmi2(
                                     let v = if idx == 0 {
                                         v_base
                                     } else {
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(idx)),
-                                        )
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(idx)))
                                     };
-                                    _mm_storeu_si128(
-                                        dest_ptr.add(copied) as *mut __m128i,
-                                        v,
-                                    );
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
                                     copied += 16;
                                 }
                             }
@@ -1826,54 +1810,44 @@ pub unsafe fn decompress_bmi2(
                                     copied += 16;
                                 }
                             }
-                                    while copied < length {
-                                        *dest_ptr.add(copied) = *src_ptr.add(copied);
-                                        copied += 1;
-                                    }
-                                } else if offset == 15 {
-                                    let dest_ptr = out_ptr.add(dest);
-                                    let src_ptr = out_ptr.add(src);
-                                    let mut copied = 0;
+                            while copied < length {
+                                *dest_ptr.add(copied) = *src_ptr.add(copied);
+                                copied += 1;
+                            }
+                        } else if offset == 15 {
+                            let dest_ptr = out_ptr.add(dest);
+                            let src_ptr = out_ptr.add(src);
+                            let mut copied = 0;
 
-                                    if length >= 16 {
-                                        let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
-                                        let masks_ptr = OFFSET15_MASKS.as_ptr() as *const __m128i;
-                                        let v_base =
-                                            _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+                            if length >= 16 {
+                                let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
+                                let masks_ptr = OFFSET15_MASKS.as_ptr() as *const __m128i;
+                                let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
 
-                                        while copied + 240 <= length {
-                                            _mm_storeu_si128(
-                                                dest_ptr.add(copied) as *mut __m128i,
-                                                v_base,
-                                            );
-                                            for i in 1..15 {
-                                                _mm_storeu_si128(
-                                                    dest_ptr.add(copied + i * 16) as *mut __m128i,
-                                                    _mm_shuffle_epi8(
-                                                        v_src,
-                                                        _mm_loadu_si128(masks_ptr.add(i)),
-                                                    ),
-                                                );
-                                            }
-                                            copied += 240;
-                                        }
-                                        while copied + 16 <= length {
-                                            let idx = (copied % 240) / 16;
-                                            let v = if idx == 0 {
-                                                v_base
-                                            } else {
-                                                _mm_shuffle_epi8(
-                                                    v_src,
-                                                    _mm_loadu_si128(masks_ptr.add(idx)),
-                                                )
-                                            };
-                                            _mm_storeu_si128(
-                                                dest_ptr.add(copied) as *mut __m128i,
-                                                v,
-                                            );
-                                            copied += 16;
-                                        }
+                                while copied + 240 <= length {
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                    for i in 1..15 {
+                                        _mm_storeu_si128(
+                                            dest_ptr.add(copied + i * 16) as *mut __m128i,
+                                            _mm_shuffle_epi8(
+                                                v_src,
+                                                _mm_loadu_si128(masks_ptr.add(i)),
+                                            ),
+                                        );
                                     }
+                                    copied += 240;
+                                }
+                                while copied + 16 <= length {
+                                    let idx = (copied % 240) / 16;
+                                    let v = if idx == 0 {
+                                        v_base
+                                    } else {
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(idx)))
+                                    };
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                    copied += 16;
+                                }
+                            }
                             while copied < length {
                                 *dest_ptr.add(copied) = *src_ptr.add(copied);
                                 copied += 1;
@@ -1968,55 +1942,33 @@ pub unsafe fn decompress_bmi2(
                             if length >= 16 {
                                 let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
                                 let masks_ptr = OFFSET14_MASKS.as_ptr() as *const __m128i;
-                                let v_base =
-                                    _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+                                let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
 
                                 while copied + 112 <= length {
-                                    _mm_storeu_si128(
-                                        dest_ptr.add(copied) as *mut __m128i,
-                                        v_base,
-                                    );
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 16) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(1)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(1))),
                                     );
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 32) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(2)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(2))),
                                     );
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 48) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(3)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(3))),
                                     );
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 64) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(4)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(4))),
                                     );
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 80) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(5)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(5))),
                                     );
                                     _mm_storeu_si128(
                                         dest_ptr.add(copied + 96) as *mut __m128i,
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(6)),
-                                        ),
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(6))),
                                     );
                                     copied += 112;
                                 }
@@ -2025,15 +1977,9 @@ pub unsafe fn decompress_bmi2(
                                     let v = if idx == 0 {
                                         v_base
                                     } else {
-                                        _mm_shuffle_epi8(
-                                            v_src,
-                                            _mm_loadu_si128(masks_ptr.add(idx)),
-                                        )
+                                        _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(idx)))
                                     };
-                                    _mm_storeu_si128(
-                                        dest_ptr.add(copied) as *mut __m128i,
-                                        v,
-                                    );
+                                    _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
                                     copied += 16;
                                 }
                             }

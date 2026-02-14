@@ -945,7 +945,9 @@ fn bench_compress_micro(c: &mut Criterion) {
         let bound = compressor.deflate_compress_bound(size);
         let mut out_buf = vec![0u8; bound];
         b.iter(|| {
-            compressor.compress_deflate_into(&data, &mut out_buf).unwrap_or(0)
+            compressor
+                .compress_deflate_into(&data, &mut out_buf)
+                .unwrap_or(0)
         });
     });
 
