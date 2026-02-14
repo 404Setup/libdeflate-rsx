@@ -16,6 +16,22 @@ fn test_offset_3_pattern() {
 }
 
 #[test]
+fn test_offset_14_large() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // 100 KB of repeated pattern. Offset 14.
+    let pattern_len = 100 * 1024;
+    let pattern: Vec<u8> = b"ABCDEFGHIJKLMN".iter().cloned().cycle().take(pattern_len).collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
 fn test_offset_12_pattern() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
@@ -112,6 +128,21 @@ fn test_offset_15_pattern() {
 
     // Pattern length 15. Offset 15.
     let pattern: Vec<u8> = b"ABCDEFGHIJKLMNO".iter().cloned().cycle().take(1000).collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
+fn test_offset_14_pattern() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // Pattern length 14. Offset 14.
+    let pattern: Vec<u8> = b"ABCDEFGHIJKLMN".iter().cloned().cycle().take(1000).collect();
     let compressed = compressor.compress_deflate(&pattern).unwrap();
 
     let decompressed = decompressor
