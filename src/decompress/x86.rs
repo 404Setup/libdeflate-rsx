@@ -71,6 +71,13 @@ const OFFSET12_MASKS: [u8; 48] = [
     6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
 ];
 
+// LCM(10, 16) = 80. 5 vectors.
+const OFFSET10_MASKS: [u8; 80] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1,
+    2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3,
+    4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+];
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3")]
 pub unsafe fn decompress_bmi2(
@@ -684,6 +691,73 @@ pub unsafe fn decompress_bmi2(
                                         copied += 16;
                                     }
 
+                                    while copied < length {
+                                        *dest_ptr.add(copied) = *src_ptr.add(copied);
+                                        copied += 1;
+                                    }
+                                } else if offset == 10 {
+                                    let dest_ptr = out_next;
+                                    let src_ptr = src;
+                                    let mut copied = 0;
+
+                                    if length >= 16 {
+                                        let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
+                                        let masks_ptr = OFFSET10_MASKS.as_ptr() as *const __m128i;
+                                        let v_base =
+                                            _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+
+                                        while copied + 80 <= length {
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v_base,
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(1)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(2)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(3)),
+                                                ),
+                                            );
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(4)),
+                                                ),
+                                            );
+                                            copied += 80;
+                                        }
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 80) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(
+                                                    v_src,
+                                                    _mm_loadu_si128(masks_ptr.add(idx)),
+                                                )
+                                            };
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied) as *mut __m128i,
+                                                v,
+                                            );
+                                            copied += 16;
+                                        }
+                                    }
                                     while copied < length {
                                         *dest_ptr.add(copied) = *src_ptr.add(copied);
                                         copied += 1;
