@@ -21,8 +21,6 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     }
 
     let mults_128b = _mm_set_epi64x(CRC32_X95_MODG as i64, CRC32_X159_MODG as i64);
-    let mults_512b = _mm_set_epi64x(CRC32_X479_MODG as i64, CRC32_X543_MODG as i64);
-    let mults_1024b = _mm_set_epi64x(CRC32_X991_MODG as i64, CRC32_X1055_MODG as i64);
     let barrett_reduction_constants = _mm_set_epi64x(
         CRC32_BARRETT_CONSTANT_2 as i64,
         CRC32_BARRETT_CONSTANT_1 as i64,
@@ -31,6 +29,7 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     let mut x0 = _mm_cvtsi32_si128(crc as i32);
 
     if len >= 64 {
+        let mults_512b = _mm_set_epi64x(CRC32_X479_MODG as i64, CRC32_X543_MODG as i64);
         let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
         let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
         let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
@@ -53,50 +52,53 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
             data = &data[64..];
             len -= 64;
 
-            while len >= 128 {
-                let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-                let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
-                let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
-                let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
-                let v4 = _mm_loadu_si128(data.as_ptr().add(64) as *const __m128i);
-                let v5 = _mm_loadu_si128(data.as_ptr().add(80) as *const __m128i);
-                let v6 = _mm_loadu_si128(data.as_ptr().add(96) as *const __m128i);
-                let v7 = _mm_loadu_si128(data.as_ptr().add(112) as *const __m128i);
+            if len >= 128 {
+                let mults_1024b = _mm_set_epi64x(CRC32_X991_MODG as i64, CRC32_X1055_MODG as i64);
+                while len >= 128 {
+                    let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+                    let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+                    let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+                    let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+                    let v4 = _mm_loadu_si128(data.as_ptr().add(64) as *const __m128i);
+                    let v5 = _mm_loadu_si128(data.as_ptr().add(80) as *const __m128i);
+                    let v6 = _mm_loadu_si128(data.as_ptr().add(96) as *const __m128i);
+                    let v7 = _mm_loadu_si128(data.as_ptr().add(112) as *const __m128i);
 
-                let x0_low = _mm_clmulepi64_si128(x0, mults_1024b, 0x00);
-                let x0_high = _mm_clmulepi64_si128(x0, mults_1024b, 0x11);
-                x0 = _mm_xor_si128(v0, _mm_xor_si128(x0_low, x0_high));
+                    let x0_low = _mm_clmulepi64_si128(x0, mults_1024b, 0x00);
+                    let x0_high = _mm_clmulepi64_si128(x0, mults_1024b, 0x11);
+                    x0 = _mm_xor_si128(v0, _mm_xor_si128(x0_low, x0_high));
 
-                let x1_low = _mm_clmulepi64_si128(x1, mults_1024b, 0x00);
-                let x1_high = _mm_clmulepi64_si128(x1, mults_1024b, 0x11);
-                x1 = _mm_xor_si128(v1, _mm_xor_si128(x1_low, x1_high));
+                    let x1_low = _mm_clmulepi64_si128(x1, mults_1024b, 0x00);
+                    let x1_high = _mm_clmulepi64_si128(x1, mults_1024b, 0x11);
+                    x1 = _mm_xor_si128(v1, _mm_xor_si128(x1_low, x1_high));
 
-                let x2_low = _mm_clmulepi64_si128(x2, mults_1024b, 0x00);
-                let x2_high = _mm_clmulepi64_si128(x2, mults_1024b, 0x11);
-                x2 = _mm_xor_si128(v2, _mm_xor_si128(x2_low, x2_high));
+                    let x2_low = _mm_clmulepi64_si128(x2, mults_1024b, 0x00);
+                    let x2_high = _mm_clmulepi64_si128(x2, mults_1024b, 0x11);
+                    x2 = _mm_xor_si128(v2, _mm_xor_si128(x2_low, x2_high));
 
-                let x3_low = _mm_clmulepi64_si128(x3, mults_1024b, 0x00);
-                let x3_high = _mm_clmulepi64_si128(x3, mults_1024b, 0x11);
-                x3 = _mm_xor_si128(v3, _mm_xor_si128(x3_low, x3_high));
+                    let x3_low = _mm_clmulepi64_si128(x3, mults_1024b, 0x00);
+                    let x3_high = _mm_clmulepi64_si128(x3, mults_1024b, 0x11);
+                    x3 = _mm_xor_si128(v3, _mm_xor_si128(x3_low, x3_high));
 
-                let x4_low = _mm_clmulepi64_si128(x4, mults_1024b, 0x00);
-                let x4_high = _mm_clmulepi64_si128(x4, mults_1024b, 0x11);
-                x4 = _mm_xor_si128(v4, _mm_xor_si128(x4_low, x4_high));
+                    let x4_low = _mm_clmulepi64_si128(x4, mults_1024b, 0x00);
+                    let x4_high = _mm_clmulepi64_si128(x4, mults_1024b, 0x11);
+                    x4 = _mm_xor_si128(v4, _mm_xor_si128(x4_low, x4_high));
 
-                let x5_low = _mm_clmulepi64_si128(x5, mults_1024b, 0x00);
-                let x5_high = _mm_clmulepi64_si128(x5, mults_1024b, 0x11);
-                x5 = _mm_xor_si128(v5, _mm_xor_si128(x5_low, x5_high));
+                    let x5_low = _mm_clmulepi64_si128(x5, mults_1024b, 0x00);
+                    let x5_high = _mm_clmulepi64_si128(x5, mults_1024b, 0x11);
+                    x5 = _mm_xor_si128(v5, _mm_xor_si128(x5_low, x5_high));
 
-                let x6_low = _mm_clmulepi64_si128(x6, mults_1024b, 0x00);
-                let x6_high = _mm_clmulepi64_si128(x6, mults_1024b, 0x11);
-                x6 = _mm_xor_si128(v6, _mm_xor_si128(x6_low, x6_high));
+                    let x6_low = _mm_clmulepi64_si128(x6, mults_1024b, 0x00);
+                    let x6_high = _mm_clmulepi64_si128(x6, mults_1024b, 0x11);
+                    x6 = _mm_xor_si128(v6, _mm_xor_si128(x6_low, x6_high));
 
-                let x7_low = _mm_clmulepi64_si128(x7, mults_1024b, 0x00);
-                let x7_high = _mm_clmulepi64_si128(x7, mults_1024b, 0x11);
-                x7 = _mm_xor_si128(v7, _mm_xor_si128(x7_low, x7_high));
+                    let x7_low = _mm_clmulepi64_si128(x7, mults_1024b, 0x00);
+                    let x7_high = _mm_clmulepi64_si128(x7, mults_1024b, 0x11);
+                    x7 = _mm_xor_si128(v7, _mm_xor_si128(x7_low, x7_high));
 
-                data = &data[128..];
-                len -= 128;
+                    data = &data[128..];
+                    len -= 128;
+                }
             }
 
             // Fold x0..x3 into x4..x7? No, x0..x7 are parallel.
