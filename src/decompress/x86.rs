@@ -237,10 +237,11 @@ pub unsafe fn decompress_bmi2(
 
                                 let src = out_next.sub(offset);
                                 if offset >= 16 {
-                                    let v1 = std::ptr::read_unaligned(src as *const u64);
-                                    let v2 = std::ptr::read_unaligned(src.add(8) as *const u64);
-                                    std::ptr::write_unaligned(out_next as *mut u64, v1);
-                                    std::ptr::write_unaligned(out_next.add(8) as *mut u64, v2);
+                                    // Optimization: Use SIMD to copy 16 bytes at once.
+                                    // This replaces 2 scalar u64 loads/stores with 1 vector load/store.
+                                    // Safe because offset >= 16 implies no destructive overlap for the first 16 bytes.
+                                    let v = _mm_loadu_si128(src as *const __m128i);
+                                    _mm_storeu_si128(out_next as *mut __m128i, v);
                                     if length > 16 {
                                         if offset >= length {
                                             std::ptr::copy_nonoverlapping(
