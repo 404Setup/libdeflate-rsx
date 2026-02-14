@@ -1403,11 +1403,41 @@ pub unsafe fn decompress_bmi2(
                                 } else if offset == 17 {
                                     let mut copied = 16;
                                     let mut v_prev = v;
+                                    // For offset 17, src[16] is dest[-1]
                                     let c = *out_ptr.add(src + 16);
                                     let mut v_align = _mm_insert_epi8(v_prev, c as i32, 15);
 
                                     while copied + 16 <= length {
                                         let v_next = _mm_alignr_epi8(v_prev, v_align, 15);
+                                        _mm_storeu_si128(
+                                            out_ptr.add(dest + copied) as *mut __m128i,
+                                            v_next,
+                                        );
+                                        v_align = v_prev;
+                                        v_prev = v_next;
+                                        copied += 16;
+                                    }
+
+                                    while copied < length {
+                                        let copy_len = std::cmp::min(offset, length - copied);
+                                        std::ptr::copy_nonoverlapping(
+                                            out_ptr.add(src + copied),
+                                            out_ptr.add(dest + copied),
+                                            copy_len,
+                                        );
+                                        copied += copy_len;
+                                    }
+                                } else if offset == 18 {
+                                    let mut copied = 16;
+                                    let mut v_prev = v;
+                                    // For offset 18, src[16] is dest[-2], src[17] is dest[-1]
+                                    let c1 = *out_ptr.add(src + 16); // dest[-2]
+                                    let c2 = *out_ptr.add(src + 17); // dest[-1]
+                                    let mut v_align = _mm_insert_epi8(v_prev, c1 as i32, 14);
+                                    v_align = _mm_insert_epi8(v_align, c2 as i32, 15);
+
+                                    while copied + 16 <= length {
+                                        let v_next = _mm_alignr_epi8(v_prev, v_align, 14);
                                         _mm_storeu_si128(
                                             out_ptr.add(dest + copied) as *mut __m128i,
                                             v_next,
