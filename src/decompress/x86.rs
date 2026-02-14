@@ -311,6 +311,37 @@ pub unsafe fn decompress_bmi2(
                                                 out_next.add(16),
                                                 length - 16,
                                             );
+                                        } else if offset == 17 {
+                                            let mut copied = 16;
+                                            // For offset 17, src[16] corresponds to dst[-1].
+                                            // We need to synthesize the next vector from the previous vector and dst[-1].
+                                            // v contains dst[-17..-2]. v[15] is dst[-2].
+                                            // We need dst[-1]. It is safe to read because it was written before the loop.
+                                            let c = *src.add(16);
+                                            // Insert dst[-1] at index 15. The rest of v_align doesn't matter for alignr(..., 15).
+                                            let mut v_align = _mm_insert_epi8(v, c as i32, 15);
+                                            let mut v_prev = v;
+
+                                            while copied + 16 <= length {
+                                                // v_next = alignr(v_prev, v_align, 15)
+                                                // This effectively takes v_align[15] (which is dst[-1] or previous end)
+                                                // and v_prev[0..14].
+                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 15);
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v_next,
+                                                );
+                                                v_align = v_prev;
+                                                v_prev = v_next;
+                                                copied += 16;
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else {
                                             let mut copied = 16;
                                             // Optimization: Use 128-bit SIMD load/store loop for bulk copy.
