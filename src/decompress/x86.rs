@@ -42,6 +42,30 @@ const OFFSET9_MASKS: [u8; 144] = [
     2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8,
 ];
 
+// LCM(3, 16) = 48. 3 vectors.
+const OFFSET3_MASKS: [u8; 48] = [
+    0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1,
+    2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2,
+];
+// LCM(5, 16) = 80. 5 vectors.
+const OFFSET5_MASKS: [u8; 80] = [
+    0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1,
+    2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3,
+    4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4,
+];
+// LCM(6, 16) = 48. 3 vectors.
+const OFFSET6_MASKS: [u8; 48] = [
+    0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1,
+    2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
+];
+// LCM(7, 16) = 112. 7 vectors.
+const OFFSET7_MASKS: [u8; 112] = [
+    0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3,
+    4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0,
+    1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4,
+    5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6,
+];
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3")]
 pub unsafe fn decompress_bmi2(
@@ -278,241 +302,163 @@ pub unsafe fn decompress_bmi2(
                                             i += 1;
                                         }
                                     } else if offset == 3 {
-                                        let val = std::ptr::read_unaligned(src as *const u64);
-                                        let p = val & 0xFFFFFF;
-
-                                        let pat0 = p | (p << 24) | (p << 48);
-                                        let pat1 = (p >> 16) | (p << 8) | (p << 32) | (p << 56);
-                                        let pat2 = (p >> 8) | (p << 16) | (p << 40);
+                                        let dest_ptr = out_next;
+                                        let val = std::ptr::read_unaligned(src as *const u32);
+                                        let v_pat = _mm_cvtsi32_si128(val as i32);
+                                        let masks_ptr = OFFSET3_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 24 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 48 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 16) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 24;
+                                            copied += 48;
                                         }
-                                        while copied + 8 <= length {
-                                            let p = match copied % 24 {
-                                                0 => pat0,
-                                                8 => pat1,
-                                                _ => pat2,
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 48) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
                                             };
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                p,
-                                            );
-                                            copied += 8;
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
-                                            *out_next.add(copied) = *src.add(copied);
+                                            *dest_ptr.add(copied) = *src.add(copied);
                                             copied += 1;
                                         }
                                     } else if offset == 5 {
+                                        let dest_ptr = out_next;
                                         let val = std::ptr::read_unaligned(src as *const u64);
-                                        let p = val & 0xFFFFFFFFFF;
-
-                                        let pat0 = p | (p << 40);
-                                        let pat1 = (p >> 24) | (p << 16) | ((p & 0xFF) << 56);
-                                        let pat2 = (p >> 8) | (p << 32);
-                                        let pat3 = (p >> 32) | (p << 8) | ((p & 0xFFFF) << 48);
-                                        let pat4 = (p >> 16) | (p << 24);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET5_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 40 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 80 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 16) as *mut u64,
-                                                pat2,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 24) as *mut u64,
-                                                pat3,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 32) as *mut u64,
-                                                pat4,
-                                            );
-                                            copied += 40;
+                                            copied += 80;
                                         }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat3,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 80) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
-                                            *out_next.add(copied) = *src.add(copied);
+                                            *dest_ptr.add(copied) = *src.add(copied);
                                             copied += 1;
                                         }
                                     } else if offset == 6 {
+                                        let dest_ptr = out_next;
                                         let val = std::ptr::read_unaligned(src as *const u64);
-                                        let p = val & 0xFFFFFFFFFFFF;
-
-                                        let pat0 = p | (p << 48);
-                                        let pat1 = (p >> 16) | (p << 32);
-                                        let pat2 = (p >> 32) | (p << 16);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET6_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 24 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 48 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 16) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 24;
+                                            copied += 48;
                                         }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 48) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
-                                            *out_next.add(copied) = *src.add(copied);
+                                            *dest_ptr.add(copied) = *src.add(copied);
                                             copied += 1;
                                         }
-                                    } else {
+                                    } else { // offset == 7
+                                        let dest_ptr = out_next;
                                         let val = std::ptr::read_unaligned(src as *const u64);
-                                        let p = val & 0xFFFFFFFFFFFFFF;
-
-                                        let pat0 = p | (p << 56);
-                                        let pat1 = (p >> 8) | (p << 48);
-                                        let pat2 = (p >> 16) | (p << 40);
-                                        let pat3 = (p >> 24) | (p << 32);
-                                        let pat4 = (p >> 32) | (p << 24);
-                                        let pat5 = (p >> 40) | (p << 16);
-                                        let pat6 = (p >> 48) | (p << 8);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET7_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 56 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 112 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 16) as *mut u64,
-                                                pat2,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 24) as *mut u64,
-                                                pat3,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 32) as *mut u64,
-                                                pat4,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 80) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(5))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 40) as *mut u64,
-                                                pat5,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 96) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(6))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied + 48) as *mut u64,
-                                                pat6,
-                                            );
-                                            copied += 56;
+                                            copied += 112;
                                         }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat3,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat4,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                out_next.add(copied) as *mut u64,
-                                                pat5,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 112) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
-                                            *out_next.add(copied) = *src.add(copied);
+                                            *dest_ptr.add(copied) = *src.add(copied);
                                             copied += 1;
                                         }
                                     }
@@ -786,66 +732,33 @@ pub unsafe fn decompress_bmi2(
                             } else {
                                 match offset {
                                     3 => {
-                                        let b0 = *src_ptr as u64;
-                                        let b1 = *src_ptr.add(1) as u64;
-                                        let b2 = *src_ptr.add(2) as u64;
-                                        let pat0 = b0
-                                            | (b1 << 8)
-                                            | (b2 << 16)
-                                            | (b0 << 24)
-                                            | (b1 << 32)
-                                            | (b2 << 40)
-                                            | (b0 << 48)
-                                            | (b1 << 56);
-                                        let pat1 = b2
-                                            | (b0 << 8)
-                                            | (b1 << 16)
-                                            | (b2 << 24)
-                                            | (b0 << 32)
-                                            | (b1 << 40)
-                                            | (b2 << 48)
-                                            | (b0 << 56);
-                                        let pat2 = b1
-                                            | (b2 << 8)
-                                            | (b0 << 16)
-                                            | (b1 << 24)
-                                            | (b2 << 32)
-                                            | (b0 << 40)
-                                            | (b1 << 48)
-                                            | (b2 << 56);
+                                        let val = std::ptr::read_unaligned(src_ptr as *const u32);
+                                        let v_pat = _mm_cvtsi32_si128(val as i32);
+                                        let masks_ptr = OFFSET3_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 24 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 48 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 16) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 24;
+                                            copied += 48;
                                         }
-                                        // Handle tail by writing remaining 8-byte patterns if possible.
-                                        // This avoids falling back to the slower byte-by-byte loop for
-                                        // short remainders (e.g. 15 bytes).
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 48) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
@@ -853,103 +766,41 @@ pub unsafe fn decompress_bmi2(
                                         }
                                     }
                                     5 => {
-                                        let mut b = [0u64; 5];
-                                        for i in 0..5 {
-                                            b[i] = *src_ptr.add(i) as u64;
-                                        }
-                                        let pat0 = b[0]
-                                            | (b[1] << 8)
-                                            | (b[2] << 16)
-                                            | (b[3] << 24)
-                                            | (b[4] << 32)
-                                            | (b[0] << 40)
-                                            | (b[1] << 48)
-                                            | (b[2] << 56);
-                                        let pat1 = b[3]
-                                            | (b[4] << 8)
-                                            | (b[0] << 16)
-                                            | (b[1] << 24)
-                                            | (b[2] << 32)
-                                            | (b[3] << 40)
-                                            | (b[4] << 48)
-                                            | (b[0] << 56);
-                                        let pat2 = b[1]
-                                            | (b[2] << 8)
-                                            | (b[3] << 16)
-                                            | (b[4] << 24)
-                                            | (b[0] << 32)
-                                            | (b[1] << 40)
-                                            | (b[2] << 48)
-                                            | (b[3] << 56);
-                                        let pat3 = b[4]
-                                            | (b[0] << 8)
-                                            | (b[1] << 16)
-                                            | (b[2] << 24)
-                                            | (b[3] << 32)
-                                            | (b[4] << 40)
-                                            | (b[0] << 48)
-                                            | (b[1] << 56);
-                                        let pat4 = b[2]
-                                            | (b[3] << 8)
-                                            | (b[4] << 16)
-                                            | (b[0] << 24)
-                                            | (b[1] << 32)
-                                            | (b[2] << 40)
-                                            | (b[3] << 48)
-                                            | (b[4] << 56);
+                                        let val = std::ptr::read_unaligned(src_ptr as *const u64);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET5_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 40 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 80 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 16) as *mut u64,
-                                                pat2,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 24) as *mut u64,
-                                                pat3,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 32) as *mut u64,
-                                                pat4,
-                                            );
-                                            copied += 40;
+                                            copied += 80;
                                         }
-                                        // Handle tail by writing remaining 8-byte patterns if possible.
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat3,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 80) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
@@ -957,65 +808,33 @@ pub unsafe fn decompress_bmi2(
                                         }
                                     }
                                     6 => {
-                                        let mut b = [0u64; 6];
-                                        for i in 0..6 {
-                                            b[i] = *src_ptr.add(i) as u64;
-                                        }
-                                        let pat0 = b[0]
-                                            | (b[1] << 8)
-                                            | (b[2] << 16)
-                                            | (b[3] << 24)
-                                            | (b[4] << 32)
-                                            | (b[5] << 40)
-                                            | (b[0] << 48)
-                                            | (b[1] << 56);
-                                        let pat1 = b[2]
-                                            | (b[3] << 8)
-                                            | (b[4] << 16)
-                                            | (b[5] << 24)
-                                            | (b[0] << 32)
-                                            | (b[1] << 40)
-                                            | (b[2] << 48)
-                                            | (b[3] << 56);
-                                        let pat2 = b[4]
-                                            | (b[5] << 8)
-                                            | (b[0] << 16)
-                                            | (b[1] << 24)
-                                            | (b[2] << 32)
-                                            | (b[3] << 40)
-                                            | (b[4] << 48)
-                                            | (b[5] << 56);
+                                        let val = std::ptr::read_unaligned(src_ptr as *const u64);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET6_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 24 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 48 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 16) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 24;
+                                            copied += 48;
                                         }
-                                        // Handle tail by writing remaining 8-byte patterns if possible.
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 48) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
@@ -1023,141 +842,49 @@ pub unsafe fn decompress_bmi2(
                                         }
                                     }
                                     7 => {
-                                        let mut b = [0u64; 7];
-                                        for i in 0..7 {
-                                            b[i] = *src_ptr.add(i) as u64;
-                                        }
-                                        let pat0 = b[0]
-                                            | (b[1] << 8)
-                                            | (b[2] << 16)
-                                            | (b[3] << 24)
-                                            | (b[4] << 32)
-                                            | (b[5] << 40)
-                                            | (b[6] << 48)
-                                            | (b[0] << 56);
-                                        let pat1 = b[1]
-                                            | (b[2] << 8)
-                                            | (b[3] << 16)
-                                            | (b[4] << 24)
-                                            | (b[5] << 32)
-                                            | (b[6] << 40)
-                                            | (b[0] << 48)
-                                            | (b[1] << 56);
-                                        let pat2 = b[2]
-                                            | (b[3] << 8)
-                                            | (b[4] << 16)
-                                            | (b[5] << 24)
-                                            | (b[6] << 32)
-                                            | (b[0] << 40)
-                                            | (b[1] << 48)
-                                            | (b[2] << 56);
-                                        let pat3 = b[3]
-                                            | (b[4] << 8)
-                                            | (b[5] << 16)
-                                            | (b[6] << 24)
-                                            | (b[0] << 32)
-                                            | (b[1] << 40)
-                                            | (b[2] << 48)
-                                            | (b[3] << 56);
-                                        let pat4 = b[4]
-                                            | (b[5] << 8)
-                                            | (b[6] << 16)
-                                            | (b[0] << 24)
-                                            | (b[1] << 32)
-                                            | (b[2] << 40)
-                                            | (b[3] << 48)
-                                            | (b[4] << 56);
-                                        let pat5 = b[5]
-                                            | (b[6] << 8)
-                                            | (b[0] << 16)
-                                            | (b[1] << 24)
-                                            | (b[2] << 32)
-                                            | (b[3] << 40)
-                                            | (b[4] << 48)
-                                            | (b[5] << 56);
-                                        let pat6 = b[6]
-                                            | (b[0] << 8)
-                                            | (b[1] << 16)
-                                            | (b[2] << 24)
-                                            | (b[3] << 32)
-                                            | (b[4] << 40)
-                                            | (b[5] << 48)
-                                            | (b[6] << 56);
+                                        let val = std::ptr::read_unaligned(src_ptr as *const u64);
+                                        let v_pat = _mm_cvtsi64_si128(val as i64);
+                                        let masks_ptr = OFFSET7_MASKS.as_ptr() as *const __m128i;
+                                        let v_base = _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr));
 
                                         let mut copied = 0;
-                                        while copied + 56 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
+                                        while copied + 112 <= length {
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v_base);
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 16) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(1))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 8) as *mut u64,
-                                                pat1,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 32) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(2))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 16) as *mut u64,
-                                                pat2,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 48) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(3))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 24) as *mut u64,
-                                                pat3,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 64) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(4))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 32) as *mut u64,
-                                                pat4,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 80) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(5))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 40) as *mut u64,
-                                                pat5,
+                                            _mm_storeu_si128(
+                                                dest_ptr.add(copied + 96) as *mut __m128i,
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(6))),
                                             );
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied + 48) as *mut u64,
-                                                pat6,
-                                            );
-                                            copied += 56;
+                                            copied += 112;
                                         }
-                                        // Handle tail by writing remaining 8-byte patterns if possible.
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat0,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat1,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat2,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat3,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat4,
-                                            );
-                                            copied += 8;
-                                        }
-                                        if copied + 8 <= length {
-                                            std::ptr::write_unaligned(
-                                                dest_ptr.add(copied) as *mut u64,
-                                                pat5,
-                                            );
-                                            copied += 8;
+                                        while copied + 16 <= length {
+                                            let idx = (copied % 112) / 16;
+                                            let v = if idx == 0 {
+                                                v_base
+                                            } else {
+                                                _mm_shuffle_epi8(v_pat, _mm_loadu_si128(masks_ptr.add(idx)))
+                                            };
+                                            _mm_storeu_si128(dest_ptr.add(copied) as *mut __m128i, v);
+                                            copied += 16;
                                         }
                                         while copied < length {
                                             *dest_ptr.add(copied) = *src_ptr.add(copied);
