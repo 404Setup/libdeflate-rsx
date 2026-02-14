@@ -4,17 +4,29 @@ use rayon::prelude::*;
 
 pub struct BatchCompressor {
     level: usize,
+    #[cfg(feature = "cuda")]
+    cuda_compressor: Option<crate::batch_cuda::CudaBatchCompressor>,
 }
 
 impl BatchCompressor {
     pub fn new(level: usize) -> Self {
-        Self { level }
+        #[cfg(feature = "cuda")]
+        let cuda_compressor =
+            std::panic::catch_unwind(|| crate::batch_cuda::CudaBatchCompressor::new(level))
+                .ok()
+                .and_then(|res| res.ok());
+
+        Self {
+            level,
+            #[cfg(feature = "cuda")]
+            cuda_compressor,
+        }
     }
 
     pub fn compress_batch(&self, inputs: &[&[u8]]) -> Vec<Vec<u8>> {
         #[cfg(feature = "cuda")]
         {
-            if let Ok(cuda_impl) = crate::batch_cuda::CudaBatchCompressor::new(self.level) {
+            if let Some(cuda_impl) = &self.cuda_compressor {
                 if let Ok(res) = cuda_impl.compress_batch(inputs) {
                     return res;
                 }

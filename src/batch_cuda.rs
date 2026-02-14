@@ -24,7 +24,10 @@ impl CudaBatchCompressor {
         }
     }
 
-    pub fn compress_batch(&self, _inputs: &[&[u8]]) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
+    pub fn compress_batch(
+        &self,
+        _inputs: &[&[u8]],
+    ) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
         #[cfg(feature = "cuda")]
         {
             // Placeholder for CUDA implementation
