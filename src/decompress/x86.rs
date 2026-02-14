@@ -342,6 +342,41 @@ pub unsafe fn decompress_bmi2(
                                                     length - copied,
                                                 );
                                             }
+                                        } else if offset == 16 {
+                                            let mut copied = 16;
+                                            while copied + 64 <= length {
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied + 16) as *mut __m128i,
+                                                    v,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied + 32) as *mut __m128i,
+                                                    v,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied + 48) as *mut __m128i,
+                                                    v,
+                                                );
+                                                copied += 64;
+                                            }
+                                            while copied + 16 <= length {
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v,
+                                                );
+                                                copied += 16;
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else {
                                             let mut copied = 16;
                                             // Optimization: Use 128-bit SIMD load/store loop for bulk copy.
@@ -1356,10 +1391,8 @@ pub unsafe fn decompress_bmi2(
                         let out_ptr = output.as_mut_ptr();
 
                         if offset >= 16 && dest + 16 <= out_len {
-                            let v1 = std::ptr::read_unaligned(out_ptr.add(src) as *const u64);
-                            let v2 = std::ptr::read_unaligned(out_ptr.add(src + 8) as *const u64);
-                            std::ptr::write_unaligned(out_ptr.add(dest) as *mut u64, v1);
-                            std::ptr::write_unaligned(out_ptr.add(dest + 8) as *mut u64, v2);
+                            let v = _mm_loadu_si128(out_ptr.add(src) as *const __m128i);
+                            _mm_storeu_si128(out_ptr.add(dest) as *mut __m128i, v);
                             if length > 16 {
                                 if offset >= length {
                                     std::ptr::copy_nonoverlapping(
@@ -1369,8 +1402,7 @@ pub unsafe fn decompress_bmi2(
                                     );
                                 } else if offset == 17 {
                                     let mut copied = 16;
-                                    let mut v_prev =
-                                        _mm_loadu_si128(out_ptr.add(src) as *const __m128i);
+                                    let mut v_prev = v;
                                     let c = *out_ptr.add(src + 16);
                                     let mut v_align = _mm_insert_epi8(v_prev, c as i32, 15);
 
@@ -1385,6 +1417,24 @@ pub unsafe fn decompress_bmi2(
                                         copied += 16;
                                     }
 
+                                    while copied < length {
+                                        let copy_len = std::cmp::min(offset, length - copied);
+                                        std::ptr::copy_nonoverlapping(
+                                            out_ptr.add(src + copied),
+                                            out_ptr.add(dest + copied),
+                                            copy_len,
+                                        );
+                                        copied += copy_len;
+                                    }
+                                } else if offset == 16 {
+                                    let mut copied = 16;
+                                    while copied + 16 <= length {
+                                        _mm_storeu_si128(
+                                            out_ptr.add(dest + copied) as *mut __m128i,
+                                            v,
+                                        );
+                                        copied += 16;
+                                    }
                                     while copied < length {
                                         let copy_len = std::cmp::min(offset, length - copied);
                                         std::ptr::copy_nonoverlapping(
