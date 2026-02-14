@@ -607,64 +607,6 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
     res
 }
 
-#[inline(always)]
-unsafe fn fold_vec128(dst: __m128i, src: __m128i, mults: __m128i) -> __m128i {
-    let t1 = _mm_clmulepi64_si128(dst, mults, 0x00);
-    let t2 = _mm_clmulepi64_si128(dst, mults, 0x11);
-    _mm_xor_si128(src, _mm_xor_si128(t1, t2))
-}
-
-#[inline(always)]
-unsafe fn fold_vec256(dst: __m256i, src: __m256i, mults: __m256i) -> __m256i {
-    #[cfg(target_feature = "avx512f")]
-    {
-        _mm256_ternarylogic_epi32(
-            _mm256_clmulepi64_epi128(dst, mults, 0x00),
-            _mm256_clmulepi64_epi128(dst, mults, 0x11),
-            src,
-            0x96,
-        )
-    }
-    #[cfg(not(target_feature = "avx512f"))]
-    {
-        _mm256_xor_si256(
-            _mm256_xor_si256(src, _mm256_clmulepi64_epi128(dst, mults, 0x00)),
-            _mm256_clmulepi64_epi128(dst, mults, 0x11),
-        )
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
-unsafe fn fold_vec512(dst: __m512i, src: __m512i, mults: __m512i) -> __m512i {
-    _mm512_ternarylogic_epi32(
-        _mm512_clmulepi64_epi128(dst, mults, 0x00),
-        _mm512_clmulepi64_epi128(dst, mults, 0x11),
-        src,
-        0x96,
-    )
-}
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn fold_lessthan16bytes(x: __m128i, p: &[u8], len: usize, mults: __m128i) -> __m128i {
-    let shift_tab = [
-        0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-        0x0e, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff,
-    ];
-    let lshift = _mm_loadu_si128(shift_tab.as_ptr().add(len) as *const __m128i);
-    let rshift = _mm_loadu_si128(shift_tab.as_ptr().add(len + 16) as *const __m128i);
-
-    let x0 = _mm_shuffle_epi8(x, lshift);
-    let x1 = _mm_blendv_epi8(
-        _mm_shuffle_epi8(x, rshift),
-        _mm_loadu_si128(p.as_ptr().offset((len as isize) - 16) as *const __m128i),
-        rshift,
-    );
-    fold_vec128(x0, x1, mults)
-}
-
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,vpclmulqdq")]
 pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
@@ -742,20 +684,73 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
             mults_128b,
         );
     } else {
-        if len >= 16 {
-            x0 = _mm_xor_si128(_mm_loadu_si128(data.as_ptr() as *const __m128i), x0);
-            data = &data[16..];
-            len -= 16;
-        } else {
-            // Optimize: Use slicing-by-8 for small tails >= 8 bytes.
+        if len < 16 {
             if len >= 8 {
                 return crate::crc32::crc32_slice8(crc, data);
             }
             return crate::crc32::crc32_slice1(crc, data);
         }
+
+        if len >= 64 {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+            let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+            let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+
+            let t1 = fold_vec128(_mm_xor_si128(v0, x0), v1, mults_128b);
+            let t2 = fold_vec128(v2, v3, mults_128b);
+            let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
+            x0 = fold_vec128(t1, t2, mults_256b);
+
+            data = &data[64..];
+            len -= 64;
+        } else if len >= 32 {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+
+            let t1 = fold_vec128(_mm_xor_si128(v0, x0), v1, mults_128b);
+            x0 = t1;
+
+            data = &data[32..];
+            len -= 32;
+        } else {
+            x0 = _mm_xor_si128(_mm_loadu_si128(data.as_ptr() as *const __m128i), x0);
+            data = &data[16..];
+            len -= 16;
+        }
     }
 
-    while len >= 16 {
+    if len >= 64 {
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+        let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+        let v3 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+
+        let t1 = fold_vec128(v0, v1, mults_128b);
+        let t2 = fold_vec128(v2, v3, mults_128b);
+        let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
+        let t3 = fold_vec128(t1, t2, mults_256b);
+
+        let mults_512b = _mm_set_epi64x(CRC32_X479_MODG as i64, CRC32_X543_MODG as i64);
+        x0 = fold_vec128(x0, t3, mults_512b);
+
+        data = &data[64..];
+        len -= 64;
+    }
+
+    if len >= 32 {
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+
+        let t1 = fold_vec128(v0, v1, mults_128b);
+        let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
+        x0 = fold_vec128(x0, t1, mults_256b);
+
+        data = &data[32..];
+        len -= 32;
+    }
+
+    if len >= 16 {
         x0 = fold_vec128(
             x0,
             _mm_loadu_si128(data.as_ptr() as *const __m128i),
@@ -782,4 +777,62 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
     }
 
     res
+}
+
+#[inline(always)]
+unsafe fn fold_vec128(dst: __m128i, src: __m128i, mults: __m128i) -> __m128i {
+    let t1 = _mm_clmulepi64_si128(dst, mults, 0x00);
+    let t2 = _mm_clmulepi64_si128(dst, mults, 0x11);
+    _mm_xor_si128(src, _mm_xor_si128(t1, t2))
+}
+
+#[inline(always)]
+unsafe fn fold_vec256(dst: __m256i, src: __m256i, mults: __m256i) -> __m256i {
+    #[cfg(target_feature = "avx512f")]
+    {
+        _mm256_ternarylogic_epi32(
+            _mm256_clmulepi64_epi128(dst, mults, 0x00),
+            _mm256_clmulepi64_epi128(dst, mults, 0x11),
+            src,
+            0x96,
+        )
+    }
+    #[cfg(not(target_feature = "avx512f"))]
+    {
+        _mm256_xor_si256(
+            _mm256_xor_si256(src, _mm256_clmulepi64_epi128(dst, mults, 0x00)),
+            _mm256_clmulepi64_epi128(dst, mults, 0x11),
+        )
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
+unsafe fn fold_vec512(dst: __m512i, src: __m512i, mults: __m512i) -> __m512i {
+    _mm512_ternarylogic_epi32(
+        _mm512_clmulepi64_epi128(dst, mults, 0x00),
+        _mm512_clmulepi64_epi128(dst, mults, 0x11),
+        src,
+        0x96,
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn fold_lessthan16bytes(x: __m128i, p: &[u8], len: usize, mults: __m128i) -> __m128i {
+    let shift_tab = [
+        0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+        0x0e, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff,
+    ];
+    let lshift = _mm_loadu_si128(shift_tab.as_ptr().add(len) as *const __m128i);
+    let rshift = _mm_loadu_si128(shift_tab.as_ptr().add(len + 16) as *const __m128i);
+
+    let x0 = _mm_shuffle_epi8(x, lshift);
+    let x1 = _mm_blendv_epi8(
+        _mm_shuffle_epi8(x, rshift),
+        _mm_loadu_si128(p.as_ptr().offset((len as isize) - 16) as *const __m128i),
+        rshift,
+    );
+    fold_vec128(x0, x1, mults)
 }

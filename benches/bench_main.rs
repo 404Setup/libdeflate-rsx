@@ -132,7 +132,7 @@ fn bench_crc32_micro(c: &mut Criterion) {
     // 100: 16*6 + 4 (tail 4, should use slice1)
     // 108: 16*6 + 12 (tail 12, should use slice8 + slice1)
     // 1024: 16*64 (tail 0)
-    let sizes = [20, 28, 100, 108, 1024];
+    let sizes = [20, 28, 64, 80, 100, 108, 127, 128, 1024];
     let mut group = c.benchmark_group("CRC32 Micro");
 
     for size in sizes {
