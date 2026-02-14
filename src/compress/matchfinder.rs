@@ -182,6 +182,19 @@ unsafe fn match_len_sw(a: *const u8, b: *const u8, max_len: usize) -> usize {
 unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
 
+    // Fail fast for short matches (common case in greedy/lazy parsing).
+    // This avoids loading the second 64-byte chunk if the first one mismatches.
+    if len + 16 <= max_len {
+        let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
+        let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
+        let cmp = _mm_cmpeq_epi8(v1, v2);
+        let mask = _mm_movemask_epi8(cmp) as u32;
+        if mask != 0xFFFF {
+            return len + (!mask).trailing_zeros() as usize;
+        }
+        len += 16;
+    }
+
     // Unroll loop to process 64 bytes per iteration
     while len + 64 <= max_len {
         let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
@@ -744,7 +757,6 @@ impl MatchFinder {
             }
         }
     }
-
 }
 
 pub struct HtMatchFinder {
@@ -1157,7 +1169,6 @@ impl BtMatchFinder {
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -1320,6 +1331,49 @@ mod tests {
                 // a has '6' at 32.
                 let len = match_len_avx10(a.as_ptr(), d.as_ptr(), 33);
                 assert_eq!(len, 32);
+            }
+        }
+    }
+
+    #[test]
+    fn test_match_len_sse2_explicit() {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("sse2") {
+            let mut a = vec![0u8; 300];
+            let mut b = vec![0u8; 300];
+            for i in 0..300 {
+                a[i] = (i % 256) as u8;
+                b[i] = (i % 256) as u8;
+            }
+
+            unsafe {
+                // Test > 64 bytes match
+                let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 200);
+
+                // Test mismatch in first 16 bytes
+                b[10] = 0xFF;
+                let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 10);
+                b[10] = a[10];
+
+                // Test mismatch in second 16 bytes (offset 20)
+                b[20] = 0xFF;
+                let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 20);
+                b[20] = a[20];
+
+                // Test mismatch in unrolled loop (offset 70)
+                b[70] = 0xFF;
+                let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 200);
+                assert_eq!(len, 70);
+                b[70] = a[70];
+
+                // Test match length preventing unrolled loop (max_len=70)
+                // With optimization: consumes 16 bytes. len=16. 16+64 > 70. Skips unrolled.
+                // Tail loop handles rest.
+                let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 70);
+                assert_eq!(len, 70);
             }
         }
     }
