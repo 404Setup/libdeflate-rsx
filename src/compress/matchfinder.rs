@@ -181,6 +181,51 @@ unsafe fn match_len_sw(a: *const u8, b: *const u8, max_len: usize) -> usize {
 #[inline]
 unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
+
+    // Unroll loop to process 64 bytes per iteration
+    while len + 64 <= max_len {
+        let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
+        let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
+        let cmp1 = _mm_cmpeq_epi8(v1, v2);
+        let mask1 = _mm_movemask_epi8(cmp1) as u32;
+
+        let v3 = _mm_loadu_si128(a.add(len + 16) as *const __m128i);
+        let v4 = _mm_loadu_si128(b.add(len + 16) as *const __m128i);
+        let cmp2 = _mm_cmpeq_epi8(v3, v4);
+        let mask2 = _mm_movemask_epi8(cmp2) as u32;
+
+        let v5 = _mm_loadu_si128(a.add(len + 32) as *const __m128i);
+        let v6 = _mm_loadu_si128(b.add(len + 32) as *const __m128i);
+        let cmp3 = _mm_cmpeq_epi8(v5, v6);
+        let mask3 = _mm_movemask_epi8(cmp3) as u32;
+
+        let v7 = _mm_loadu_si128(a.add(len + 48) as *const __m128i);
+        let v8 = _mm_loadu_si128(b.add(len + 48) as *const __m128i);
+        let cmp4 = _mm_cmpeq_epi8(v7, v8);
+        let mask4 = _mm_movemask_epi8(cmp4) as u32;
+
+        // Combine masks into a single 64-bit check
+        let combined = (mask1 as u64)
+            | ((mask2 as u64) << 16)
+            | ((mask3 as u64) << 32)
+            | ((mask4 as u64) << 48);
+
+        if combined != 0xFFFFFFFFFFFFFFFF {
+            if mask1 != 0xFFFF {
+                return len + (!mask1).trailing_zeros() as usize;
+            }
+            if mask2 != 0xFFFF {
+                return len + 16 + (!mask2).trailing_zeros() as usize;
+            }
+            if mask3 != 0xFFFF {
+                return len + 32 + (!mask3).trailing_zeros() as usize;
+            }
+            return len + 48 + (!mask4).trailing_zeros() as usize;
+        }
+
+        len += 64;
+    }
+
     while len + 16 <= max_len {
         let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
         let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
@@ -699,6 +744,7 @@ impl MatchFinder {
             }
         }
     }
+
 }
 
 pub struct HtMatchFinder {
@@ -1111,6 +1157,7 @@ impl BtMatchFinder {
             }
         }
     }
+
 }
 
 #[cfg(test)]
