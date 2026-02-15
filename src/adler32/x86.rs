@@ -366,17 +366,30 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let data_a = _mm256_loadu_si256(ptr as *const __m256i);
             let data_b = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, _mm256_slli_epi32(v_s1, 5));
-            let p1 = _mm256_maddubs_epi16(data_a, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_a, v_zero));
-            let s_a = _mm256_madd_epi16(p1, ones_i16);
-            v_s2 = _mm256_add_epi32(v_s2, s_a);
+            // Optimization: Parallelize SAD calculation and s1/s2 updates to reduce dependency chains.
+            // By computing sad_a and sad_b in parallel, we can accumulate s1 sums and s1 in larger steps.
+            let sad_a = _mm256_sad_epu8(data_a, v_zero);
+            let sad_b = _mm256_sad_epu8(data_b, v_zero);
 
-            v_s1_sums = _mm256_add_epi32(v_s1_sums, _mm256_slli_epi32(v_s1, 5));
+            // Update v_s1_sums:
+            // The contribution of the current v_s1 to the sums over the next 64 bytes is:
+            // - For the first 32 bytes: v_s1 * 32
+            // - For the second 32 bytes: (v_s1 + sad_a) * 32
+            // Total: v_s1 * 64 + sad_a * 32
+            let v_s1_x64 = _mm256_slli_epi32(v_s1, 6);
+            let sad_a_x32 = _mm256_slli_epi32(sad_a, 5);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, _mm256_add_epi32(v_s1_x64, sad_a_x32));
+
+            // Update v_s1: v_s1 += sad_a + sad_b
+            v_s1 = _mm256_add_epi32(v_s1, _mm256_add_epi32(sad_a, sad_b));
+
+            // Update v_s2: Calculate partial s2 contributions in parallel
+            let p1 = _mm256_maddubs_epi16(data_a, weights);
+            let s_a = _mm256_madd_epi16(p1, ones_i16);
             let p2 = _mm256_maddubs_epi16(data_b, weights);
-            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(data_b, v_zero));
             let s_b = _mm256_madd_epi16(p2, ones_i16);
-            v_s2 = _mm256_add_epi32(v_s2, s_b);
+
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(s_a, s_b));
 
             ptr = ptr.add(64);
             chunk_n -= 64;
