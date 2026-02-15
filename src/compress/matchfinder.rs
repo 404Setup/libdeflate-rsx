@@ -284,6 +284,8 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         len += 32;
     }
 
+    let v_zero = _mm256_setzero_si256();
+
     while len + 128 <= max_len {
         let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
         let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
@@ -311,22 +313,24 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         }
 
         if _mm256_testz_si256(xor1, xor1) == 0 {
-            let cmp = _mm256_cmpeq_epi8(v1, v2);
+            // Optimization: Use xor1 (already computed) instead of v1/v2 to check for equality.
+            // This allows the compiler to free v1/v2 registers earlier, reducing register pressure.
+            let cmp = _mm256_cmpeq_epi8(xor1, v_zero);
             let mask = _mm256_movemask_epi8(cmp) as u32;
             return len + (!mask).trailing_zeros() as usize;
         }
         if _mm256_testz_si256(xor2, xor2) == 0 {
-            let cmp = _mm256_cmpeq_epi8(v3, v4);
+            let cmp = _mm256_cmpeq_epi8(xor2, v_zero);
             let mask = _mm256_movemask_epi8(cmp) as u32;
             return len + 32 + (!mask).trailing_zeros() as usize;
         }
         if _mm256_testz_si256(xor3, xor3) == 0 {
-            let cmp = _mm256_cmpeq_epi8(v5, v6);
+            let cmp = _mm256_cmpeq_epi8(xor3, v_zero);
             let mask = _mm256_movemask_epi8(cmp) as u32;
             return len + 64 + (!mask).trailing_zeros() as usize;
         }
 
-        let cmp = _mm256_cmpeq_epi8(v7, v8);
+        let cmp = _mm256_cmpeq_epi8(xor4, v_zero);
         let mask = _mm256_movemask_epi8(cmp) as u32;
         return len + 96 + (!mask).trailing_zeros() as usize;
     }
