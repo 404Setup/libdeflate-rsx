@@ -41,6 +41,23 @@ impl<'a> Bitstream<'a> {
         unsafe { self.write_bits_unchecked(bits & mask, count) }
     }
 
+    /// Writes up to 32 bits without checking count or masking bits.
+    ///
+    /// # Safety
+    ///
+    /// * `count` must be > 0.
+    /// * `bits` must not have any bits set above `count`.
+    #[inline(always)]
+    pub unsafe fn write_bits_upto_32(&mut self, bits: u32, count: u32) -> bool {
+        if count <= 16 {
+            return self.write_bits_unchecked(bits, count);
+        }
+        if !self.write_bits_unchecked(bits & 0xFFFF, 16) {
+            return false;
+        }
+        self.write_bits_unchecked(bits >> 16, count - 16)
+    }
+
     /// Writes bits without checking count or masking bits.
     ///
     /// # Safety

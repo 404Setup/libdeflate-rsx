@@ -1661,36 +1661,28 @@ impl Compressor {
         let entry = unsafe { *self.match_len_table.get_unchecked(len) };
         let code = entry as u16 as u32;
         let huff_len = (entry >> 16) as u8 as u32;
-
-        if !unsafe { bs.write_bits_unchecked(code, huff_len) } {
-            return false;
-        }
-
         let extra_bits = (entry >> 24) as u8 as u32;
-        if extra_bits > 0 {
-            let base = (entry >> 32) as u16 as u32;
-            if !unsafe { bs.write_bits_unchecked((len as u32).wrapping_sub(base), extra_bits) } {
-                return false;
-            }
+        let base = (entry >> 32) as u16 as u32;
+
+        let len_val = code | ((len as u32).wrapping_sub(base) << huff_len);
+        let len_len = huff_len + extra_bits;
+
+        if !unsafe { bs.write_bits_upto_32(len_val, len_len) } {
+            return false;
         }
 
         let off_slot = self.get_offset_slot(offset);
         let entry = unsafe { *self.offset_table.get_unchecked(off_slot) };
-        if !unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) } {
-            return false;
-        }
-        let extra_bits = self.get_offset_extra_bits(off_slot);
-        if extra_bits > 0 {
-            if !unsafe {
-                bs.write_bits_unchecked(
-                    (offset - self.get_offset_base(off_slot)) as u32,
-                    extra_bits as u32,
-                )
-            } {
-                return false;
-            }
-        }
-        true
+        let off_code = entry as u32;
+        let off_len = (entry >> 32) as u32;
+
+        let extra_bits = self.get_offset_extra_bits(off_slot) as u32;
+        let base = self.get_offset_base(off_slot) as u32;
+
+        let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
+        let off_len_total = off_len + extra_bits;
+
+        unsafe { bs.write_bits_upto_32(off_val, off_len_total) }
     }
 
     fn get_length_slot(&self, len: usize) -> usize {
