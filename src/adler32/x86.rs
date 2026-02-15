@@ -65,17 +65,29 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
             v_byte_sums_d = _mm_add_epi16(v_byte_sums_d, _mm_unpackhi_epi8(data_b_4, v_zero));
 
             // SAD calculation
-            let sad_1 = _mm_add_epi32(_mm_sad_epu8(data_a_1, v_zero), _mm_sad_epu8(data_b_1, v_zero));
-            let sad_2 = _mm_add_epi32(_mm_sad_epu8(data_a_2, v_zero), _mm_sad_epu8(data_b_2, v_zero));
-            let sad_3 = _mm_add_epi32(_mm_sad_epu8(data_a_3, v_zero), _mm_sad_epu8(data_b_3, v_zero));
-            let sad_4 = _mm_add_epi32(_mm_sad_epu8(data_a_4, v_zero), _mm_sad_epu8(data_b_4, v_zero));
+            let sad_1 = _mm_add_epi32(
+                _mm_sad_epu8(data_a_1, v_zero),
+                _mm_sad_epu8(data_b_1, v_zero),
+            );
+            let sad_2 = _mm_add_epi32(
+                _mm_sad_epu8(data_a_2, v_zero),
+                _mm_sad_epu8(data_b_2, v_zero),
+            );
+            let sad_3 = _mm_add_epi32(
+                _mm_sad_epu8(data_a_3, v_zero),
+                _mm_sad_epu8(data_b_3, v_zero),
+            );
+            let sad_4 = _mm_add_epi32(
+                _mm_sad_epu8(data_a_4, v_zero),
+                _mm_sad_epu8(data_b_4, v_zero),
+            );
 
             // Update v_s1_sums
             // v_s1_sums += 4 * v_s1 (initial) + 3*sad_1 + 2*sad_2 + 1*sad_3
             let s1_x4 = _mm_slli_epi32(v_s1, 2);
             let inc_1 = _mm_add_epi32(
                 _mm_add_epi32(sad_1, _mm_slli_epi32(sad_1, 1)), // 3*sad_1
-                _mm_add_epi32(_mm_slli_epi32(sad_2, 1), sad_3)  // 2*sad_2 + sad_3
+                _mm_add_epi32(_mm_slli_epi32(sad_2, 1), sad_3), // 2*sad_2 + sad_3
             );
             v_s1_sums = _mm_add_epi32(v_s1_sums, _mm_add_epi32(s1_x4, inc_1));
 

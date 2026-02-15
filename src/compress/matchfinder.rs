@@ -788,7 +788,6 @@ impl MatchFinder {
             }
         }
     }
-
 }
 
 pub struct HtMatchFinder {
@@ -1197,7 +1196,6 @@ impl BtMatchFinder {
             }
         }
     }
-
 }
 
 #[cfg(test)]

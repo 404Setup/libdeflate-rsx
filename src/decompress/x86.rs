@@ -342,13 +342,36 @@ pub unsafe fn decompress_bmi2(
                                                     length - copied,
                                                 );
                                             }
+                                        } else if offset == 26 {
+                                            let mut copied = 16;
+                                            let mut v_align =
+                                                _mm_loadu_si128(src.add(10) as *const __m128i);
+                                            let mut v_prev = v;
+                                            while copied + 16 <= length {
+                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 6);
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v_next,
+                                                );
+                                                v_align = v_prev;
+                                                v_prev = v_next;
+                                                copied += 16;
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else if offset == 25 {
                                             let mut copied = 16;
                                             // For offset 25, src[16] is dest[-9].
                                             // We need dest[-9..-1] (9 bytes) at indices 7..15 of v_align.
                                             // Load 8 bytes from src[16] (dest[-9..-2]) and 1 byte from src[24] (dest[-1]).
                                             // Avoids reading dest[0] (which would be STLF hazard).
-                                            let val = std::ptr::read_unaligned(src.add(16) as *const u64);
+                                            let val =
+                                                std::ptr::read_unaligned(src.add(16) as *const u64);
                                             let c = *src.add(24);
                                             let v_temp = _mm_cvtsi64_si128(val as i64);
                                             let v_temp = _mm_insert_epi8(v_temp, c as i32, 8);
@@ -378,8 +401,10 @@ pub unsafe fn decompress_bmi2(
                                             // src[16] is dest[-7]. We need dest[-7..-1] (7 bytes).
                                             // Avoid reading dest[0] by reading two overlapping u32s.
                                             // v0 at dest[-7..-4], v1 at dest[-4..-1].
-                                            let v0 = std::ptr::read_unaligned(src.add(16) as *const u32);
-                                            let v1 = std::ptr::read_unaligned(src.add(19) as *const u32);
+                                            let v0 =
+                                                std::ptr::read_unaligned(src.add(16) as *const u32);
+                                            let v1 =
+                                                std::ptr::read_unaligned(src.add(19) as *const u32);
                                             let val = (v0 as u64) | ((v1 as u64) << 24);
                                             let v_temp = _mm_cvtsi64_si128(val as i64);
                                             let mut v_align = _mm_slli_si128(v_temp, 9);
@@ -407,8 +432,10 @@ pub unsafe fn decompress_bmi2(
                                             // src[16] is dest[-8]. We need dest[-8..-1] (8 bytes).
                                             // Avoid reading dest[0] by reading two u32s.
                                             // v0 at dest[-8..-5], v1 at dest[-4..-1].
-                                            let v0 = std::ptr::read_unaligned(src.add(16) as *const u32);
-                                            let v1 = std::ptr::read_unaligned(src.add(20) as *const u32);
+                                            let v0 =
+                                                std::ptr::read_unaligned(src.add(16) as *const u32);
+                                            let v1 =
+                                                std::ptr::read_unaligned(src.add(20) as *const u32);
                                             let val = (v0 as u64) | ((v1 as u64) << 32);
                                             let v_temp = _mm_cvtsi64_si128(val as i64);
                                             let mut v_align = _mm_slli_si128(v_temp, 8);
@@ -436,7 +463,8 @@ pub unsafe fn decompress_bmi2(
                                             // For offset 20, src[16] is dest[-4].
                                             // We need dest[-4..0] at indices 12..16 of v_align (to be shifted in).
                                             // Load 4 bytes from src[16] (which is dest[-4..0]), put in vector, shift left by 12 bytes.
-                                            let val = std::ptr::read_unaligned(src.add(16) as *const u32);
+                                            let val =
+                                                std::ptr::read_unaligned(src.add(16) as *const u32);
                                             let v_temp = _mm_cvtsi32_si128(val as i32);
                                             // Left shift by 12 bytes.
                                             let mut v_align = _mm_slli_si128(v_temp, 12);
@@ -464,7 +492,8 @@ pub unsafe fn decompress_bmi2(
                                             // For offset 21, src[16] is dest[-5].
                                             // We need dest[-5..-1] at indices 11..15 of v_align (to be shifted in).
                                             // Load 8 bytes from src[16] (which is dest[-5..2]), put in vector, shift left by 11 bytes.
-                                            let val = std::ptr::read_unaligned(src.add(16) as *const u64);
+                                            let val =
+                                                std::ptr::read_unaligned(src.add(16) as *const u64);
                                             let v_temp = _mm_cvtsi64_si128(val as i64);
                                             // Left shift by 11 bytes.
                                             let mut v_align = _mm_slli_si128(v_temp, 11);
@@ -521,7 +550,8 @@ pub unsafe fn decompress_bmi2(
                                             // For offset 18, src[16] is dest[-2], src[17] is dest[-1]
                                             let c1 = *src.add(16);
                                             let c2 = *src.add(17);
-                                            let mut v_align = _mm_insert_epi8(v_prev, c1 as i32, 14);
+                                            let mut v_align =
+                                                _mm_insert_epi8(v_prev, c1 as i32, 14);
                                             v_align = _mm_insert_epi8(v_align, c2 as i32, 15);
 
                                             while copied + 16 <= length {
@@ -550,8 +580,10 @@ pub unsafe fn decompress_bmi2(
                                             // We need dest[-6..-1] at bytes 10..15 of v_align.
                                             // Load 6 bytes from src[16] (dest[-6..0]).
                                             // Avoid RAW stall on dest[0] by loading 4+2 bytes separately.
-                                            let v0 = std::ptr::read_unaligned(src.add(16) as *const u32);
-                                            let v1 = std::ptr::read_unaligned(src.add(20) as *const u16);
+                                            let v0 =
+                                                std::ptr::read_unaligned(src.add(16) as *const u32);
+                                            let v1 =
+                                                std::ptr::read_unaligned(src.add(20) as *const u16);
                                             let val = (v0 as u64) | ((v1 as u64) << 32);
                                             let v_temp = _mm_cvtsi64_si128(val as i64);
                                             let mut v_align = _mm_slli_si128(v_temp, 10);
@@ -1700,7 +1732,9 @@ pub unsafe fn decompress_bmi2(
                                     }
                                 } else if offset == 20 {
                                     let mut copied = 16;
-                                    let val = std::ptr::read_unaligned(out_ptr.add(src + 16) as *const u32);
+                                    let val = std::ptr::read_unaligned(
+                                        out_ptr.add(src + 16) as *const u32
+                                    );
                                     let v_temp = _mm_cvtsi32_si128(val as i32);
                                     let mut v_align = _mm_slli_si128(v_temp, 12);
                                     let mut v_prev = v;
@@ -1730,7 +1764,9 @@ pub unsafe fn decompress_bmi2(
                                     // For offset 21, src[16] is dest[-5].
                                     // We need dest[-5..-1] at indices 11..15 of v_align (to be shifted in).
                                     // Load 8 bytes from src[16] (which is dest[-5..2]), put in vector, shift left by 11 bytes.
-                                    let val = std::ptr::read_unaligned(out_ptr.add(src + 16) as *const u64);
+                                    let val = std::ptr::read_unaligned(
+                                        out_ptr.add(src + 16) as *const u64
+                                    );
                                     let v_temp = _mm_cvtsi64_si128(val as i64);
                                     // Left shift by 11 bytes.
                                     let mut v_align = _mm_slli_si128(v_temp, 11);
@@ -1815,6 +1851,28 @@ pub unsafe fn decompress_bmi2(
                                             copy_len,
                                         );
                                         copied += copy_len;
+                                    }
+                                } else if offset == 26 {
+                                    let mut copied = 16;
+                                    let mut v_align =
+                                        _mm_loadu_si128(out_ptr.add(src + 10) as *const __m128i);
+                                    let mut v_prev = v;
+                                    while copied + 16 <= length {
+                                        let v_next = _mm_alignr_epi8(v_prev, v_align, 6);
+                                        _mm_storeu_si128(
+                                            out_ptr.add(dest + copied) as *mut __m128i,
+                                            v_next,
+                                        );
+                                        v_align = v_prev;
+                                        v_prev = v_next;
+                                        copied += 16;
+                                    }
+                                    if copied < length {
+                                        std::ptr::copy_nonoverlapping(
+                                            out_ptr.add(src + copied),
+                                            out_ptr.add(dest + copied),
+                                            length - copied,
+                                        );
                                     }
                                 } else if offset == 16 {
                                     let mut copied = 16;
