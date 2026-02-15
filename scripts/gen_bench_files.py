@@ -60,6 +60,8 @@ def main():
     generate_offset20("bench_data/data_offset20.bin", 1024 * 1024)
     generate_offset21("bench_data/data_offset21.bin", 1024 * 1024)
     generate_offset22("bench_data/data_offset22.bin", 1024 * 1024)
+    generate_offset23("bench_data/data_offset23.bin", 1024 * 1024)
+    generate_offset24("bench_data/data_offset24.bin", 1024 * 1024)
 
     # Small match variants
     # For offset N, we want matches of length N (or close to N).
@@ -195,6 +197,18 @@ def write_pattern(filename, target_size, pattern):
             write_amt = min(remaining, len(large_chunk))
             f.write(large_chunk[:write_amt])
             bytes_written += write_amt
+
+def generate_offset23(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    # 23 unique bytes to avoid inner matches
+    pattern = b"ABCDEFGHIJKLMNOPQRSTUVW"
+    write_pattern(filename, target_size, pattern)
+
+def generate_offset24(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    # 24 unique bytes to avoid inner matches
+    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWX"
+    write_pattern(filename, target_size, pattern)
 
 if __name__ == "__main__":
     main()
