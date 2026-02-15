@@ -219,6 +219,22 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let mut ptr = p.as_ptr();
     let mut len = p.len();
 
+    if len > 2048 {
+        let align = (ptr as usize) & 31;
+        if align != 0 {
+            let len_p = std::cmp::min(len, 32 - align);
+            let prefix = std::slice::from_raw_parts(ptr, len_p);
+            for &b in prefix {
+                s1 += b as u32;
+                s2 += s1;
+            }
+            s1 %= DIVISOR;
+            s2 %= DIVISOR;
+            ptr = ptr.add(len_p);
+            len -= len_p;
+        }
+    }
+
     // Optimization: Hoist vector constants out of the main loop to avoid redundant loads.
     let weights = _mm256_set_epi8(
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -461,6 +477,20 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
     let mut s2 = adler >> 16;
     let mut data = p;
 
+    if data.len() > 2048 {
+        let align = (data.as_ptr() as usize) & 31;
+        if align != 0 {
+            let len = std::cmp::min(data.len(), 32 - align);
+            for &b in &data[..len] {
+                s1 += b as u32;
+                s2 += s1;
+            }
+            s1 %= DIVISOR;
+            s2 %= DIVISOR;
+            data = &data[len..];
+        }
+    }
+
     let ones = _mm256_set1_epi8(1);
     let mults = _mm256_set_epi8(
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -602,6 +632,20 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
     let mut s2 = adler >> 16;
     let mut data = p;
+
+    if data.len() > 2048 {
+        let align = (data.as_ptr() as usize) & 63;
+        if align != 0 {
+            let len = std::cmp::min(data.len(), 64 - align);
+            for &b in &data[..len] {
+                s1 += b as u32;
+                s2 += s1;
+            }
+            s1 %= DIVISOR;
+            s2 %= DIVISOR;
+            data = &data[len..];
+        }
+    }
 
     let ones = _mm512_set1_epi8(1);
     let mults = _mm512_set_epi8(
@@ -794,6 +838,20 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
     let mut s2 = adler >> 16;
     let mut data = p;
+
+    if data.len() > 2048 {
+        let align = (data.as_ptr() as usize) & 63;
+        if align != 0 {
+            let len = std::cmp::min(data.len(), 64 - align);
+            for &b in &data[..len] {
+                s1 += b as u32;
+                s2 += s1;
+            }
+            s1 %= DIVISOR;
+            s2 %= DIVISOR;
+            data = &data[len..];
+        }
+    }
 
     let ones_i16 = _mm512_set1_epi16(1);
     let ones_u8 = _mm512_set1_epi8(1);
@@ -1044,6 +1102,20 @@ pub unsafe fn adler32_x86_avx512_vl(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
     let mut s2 = adler >> 16;
     let mut data = p;
+
+    if data.len() > 2048 {
+        let align = (data.as_ptr() as usize) & 31;
+        if align != 0 {
+            let len = std::cmp::min(data.len(), 32 - align);
+            for &b in &data[..len] {
+                s1 += b as u32;
+                s2 += s1;
+            }
+            s1 %= DIVISOR;
+            s2 %= DIVISOR;
+            data = &data[len..];
+        }
+    }
 
     let ones = _mm256_set1_epi8(1);
     let mults = _mm256_set_epi8(
