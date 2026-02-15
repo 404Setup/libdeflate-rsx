@@ -529,6 +529,25 @@ pub unsafe fn decompress_bmi2(
                                             _ => std::hint::unreachable_unchecked(),
                                         };
                                         let mut i = 0;
+                                        while i + 64 <= length {
+                                            _mm_storeu_si128(
+                                                out_next.add(i) as *mut __m128i,
+                                                v_pattern,
+                                            );
+                                            _mm_storeu_si128(
+                                                out_next.add(i + 16) as *mut __m128i,
+                                                v_pattern,
+                                            );
+                                            _mm_storeu_si128(
+                                                out_next.add(i + 32) as *mut __m128i,
+                                                v_pattern,
+                                            );
+                                            _mm_storeu_si128(
+                                                out_next.add(i + 48) as *mut __m128i,
+                                                v_pattern,
+                                            );
+                                            i += 64;
+                                        }
                                         while i + 32 <= length {
                                             _mm_storeu_si128(
                                                 out_next.add(i) as *mut __m128i,
@@ -820,6 +839,25 @@ pub unsafe fn decompress_bmi2(
                                     let v_pattern = _mm_set1_epi64x(val as i64);
                                     _mm_storeu_si128(out_next as *mut __m128i, v_pattern);
                                     let mut i = 16;
+                                    while i + 64 <= length {
+                                        _mm_storeu_si128(
+                                            out_next.add(i) as *mut __m128i,
+                                            v_pattern,
+                                        );
+                                        _mm_storeu_si128(
+                                            out_next.add(i + 16) as *mut __m128i,
+                                            v_pattern,
+                                        );
+                                        _mm_storeu_si128(
+                                            out_next.add(i + 32) as *mut __m128i,
+                                            v_pattern,
+                                        );
+                                        _mm_storeu_si128(
+                                            out_next.add(i + 48) as *mut __m128i,
+                                            v_pattern,
+                                        );
+                                        i += 64;
+                                    }
                                     while i + 32 <= length {
                                         _mm_storeu_si128(
                                             out_next.add(i) as *mut __m128i,
