@@ -227,7 +227,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let v_zero = _mm256_setzero_si256();
 
     while len >= 64 {
-        let n = std::cmp::min(len, 5552);
+        let n = std::cmp::min(len, 5504);
         let n_rounded = n & !63;
 
         s2 += s1 * (n_rounded as u32);
