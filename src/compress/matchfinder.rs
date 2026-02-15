@@ -263,7 +263,21 @@ unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         }
         len += 16;
     }
-    len + match_len_sw(a.add(len), b.add(len), max_len - len)
+
+    if len < max_len {
+        if max_len >= 16 {
+            let v1 = _mm_loadu_si128(a.add(max_len - 16) as *const __m128i);
+            let v2 = _mm_loadu_si128(b.add(max_len - 16) as *const __m128i);
+            let cmp = _mm_cmpeq_epi8(v1, v2);
+            let mask = _mm_movemask_epi8(cmp) as u32;
+            if mask != 0xFFFF {
+                return max_len - 16 + (!mask).trailing_zeros() as usize;
+            }
+            return max_len;
+        }
+        return len + match_len_sw(a.add(len), b.add(len), max_len - len);
+    }
+    len
 }
 
 #[cfg(target_arch = "x86_64")]
