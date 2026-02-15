@@ -282,6 +282,8 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
             return (!mask).trailing_zeros() as usize;
         }
         len += 32;
+    } else {
+        return match_len_sse2(a, b, max_len);
     }
 
     let v_zero = _mm256_setzero_si256();
@@ -345,7 +347,18 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         }
         len += 32;
     }
-    len + match_len_sse2(a.add(len), b.add(len), max_len - len)
+
+    if len < max_len {
+        let v1 = _mm256_loadu_si256(a.add(max_len - 32) as *const __m256i);
+        let v2 = _mm256_loadu_si256(b.add(max_len - 32) as *const __m256i);
+        let cmp = _mm256_cmpeq_epi8(v1, v2);
+        let mask = _mm256_movemask_epi8(cmp) as u32;
+        if mask != 0xFFFFFFFF {
+            return max_len - 32 + (!mask).trailing_zeros() as usize;
+        }
+        return max_len;
+    }
+    len
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -775,6 +788,7 @@ impl MatchFinder {
             }
         }
     }
+
 }
 
 pub struct HtMatchFinder {
@@ -1183,6 +1197,7 @@ impl BtMatchFinder {
             }
         }
     }
+
 }
 
 #[cfg(test)]
@@ -1388,6 +1403,47 @@ mod tests {
                 // Tail loop handles rest.
                 let len = match_len_sse2(a.as_ptr(), b.as_ptr(), 70);
                 assert_eq!(len, 70);
+            }
+        }
+    }
+
+    #[test]
+    fn test_match_len_avx2_tail_overlap() {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx2") {
+            let mut a = vec![0u8; 64];
+            let mut b = vec![0u8; 64];
+            for i in 0..64 {
+                a[i] = i as u8;
+                b[i] = i as u8;
+            }
+
+            unsafe {
+                // Case 1: Max len 35, mismatch at 34
+                b[34] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 35);
+                assert_eq!(len, 34);
+                b[34] = a[34];
+
+                // Case 2: Max len 35, mismatch at 32
+                b[32] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 35);
+                assert_eq!(len, 32);
+                b[32] = a[32];
+
+                // Case 3: Max len 35, full match
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 35);
+                assert_eq!(len, 35);
+
+                // Case 4: Max len 32 (boundary)
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 32);
+                assert_eq!(len, 32);
+
+                // Case 5: Max len 32, mismatch at 31
+                b[31] = 0xFF;
+                let len = match_len_avx2(a.as_ptr(), b.as_ptr(), 32);
+                assert_eq!(len, 31);
+                b[31] = a[31];
             }
         }
     }
