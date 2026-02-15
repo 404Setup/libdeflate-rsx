@@ -334,17 +334,19 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
 
             let p1 = _mm256_maddubs_epi16(data_a_1, weights);
             let s_a = _mm256_madd_epi16(p1, ones_i16);
+            v_s2_a = _mm256_add_epi32(v_s2_a, s_a);
 
             let p2 = _mm256_maddubs_epi16(data_b_1, weights);
             let s_b = _mm256_madd_epi16(p2, ones_i16);
-            v_s2_a = _mm256_add_epi32(v_s2_a, _mm256_add_epi32(s_a, s_b));
+            v_s2_b = _mm256_add_epi32(v_s2_b, s_b);
 
             let p3 = _mm256_maddubs_epi16(data_a_2, weights);
             let s_c = _mm256_madd_epi16(p3, ones_i16);
+            v_s2_c = _mm256_add_epi32(v_s2_c, s_c);
 
             let p4 = _mm256_maddubs_epi16(data_b_2, weights);
             let s_d = _mm256_madd_epi16(p4, ones_i16);
-            v_s2_b = _mm256_add_epi32(v_s2_b, _mm256_add_epi32(s_c, s_d));
+            v_s2_d = _mm256_add_epi32(v_s2_d, s_d);
 
             ptr = ptr.add(128);
             chunk_n -= 128;
@@ -361,6 +363,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let v_s1_shifted = _mm256_slli_epi32(v_s1_acc, 7);
         let v_inc_shifted = _mm256_slli_epi32(v_inc_acc, 5);
         let mut v_s1_sums = _mm256_add_epi32(v_s1_shifted, v_inc_shifted);
+
+        let mut v_s2_acc_b = _mm256_setzero_si256();
 
         while chunk_n >= 64 {
             let data_a = _mm256_loadu_si256(ptr as *const __m256i);
@@ -389,12 +393,14 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
             let p2 = _mm256_maddubs_epi16(data_b, weights);
             let s_b = _mm256_madd_epi16(p2, ones_i16);
 
-            v_s2 = _mm256_add_epi32(v_s2, _mm256_add_epi32(s_a, s_b));
+            v_s2 = _mm256_add_epi32(v_s2, s_a);
+            v_s2_acc_b = _mm256_add_epi32(v_s2_acc_b, s_b);
 
             ptr = ptr.add(64);
             chunk_n -= 64;
             len -= 64;
         }
+        v_s2 = _mm256_add_epi32(v_s2, v_s2_acc_b);
 
         v_s2 = _mm256_add_epi32(v_s2, v_s1_sums);
 
