@@ -476,11 +476,11 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
 
         let mut chunk_n = n;
 
-        // Optimization: For chunks >= 256 bytes, use the unrolled loop (processing 128 bytes per iteration)
+        // Optimization: For chunks >= 128 bytes, use the unrolled loop (processing 128 bytes per iteration)
         // with 4 independent accumulators. This amortizes the setup overhead and increases instruction-level parallelism
         // by breaking dependency chains for `vpdpbusd` (typical latency 5 cycles).
         // The previous threshold of 2048 was overly conservative. The inner loop safely handles multiples of 128 bytes.
-        if chunk_n >= 256 {
+        if chunk_n >= 128 {
             let mut ptr = data.as_ptr();
             let mut v_s2_a = _mm256_setzero_si256();
             let mut v_s2_b = _mm256_setzero_si256();
@@ -619,7 +619,7 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
 
         let mut chunk_n = n;
 
-        if chunk_n >= 512 {
+        if chunk_n >= 256 {
             let mut ptr = data.as_ptr();
             let mut v_s2_a = _mm512_setzero_si512();
             let mut v_s2_b = _mm512_setzero_si512();
@@ -812,7 +812,7 @@ pub unsafe fn adler32_x86_avx512(adler: u32, p: &[u8]) -> u32 {
 
         let mut chunk_n = n;
 
-        if chunk_n >= 512 {
+        if chunk_n >= 256 {
             let mut ptr = data.as_ptr();
             let mut v_s2_a = _mm512_setzero_si512();
             let mut v_s2_b = _mm512_setzero_si512();
