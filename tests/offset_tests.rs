@@ -16,6 +16,26 @@ fn test_offset_3_pattern() {
 }
 
 #[test]
+fn test_offset_18_pattern() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // Pattern length 18. Offset 18.
+    let pattern: Vec<u8> = b"123456789012345678"
+        .iter()
+        .cloned()
+        .cycle()
+        .take(10000)
+        .collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
 fn test_offset_14_large() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
