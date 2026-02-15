@@ -342,6 +342,37 @@ pub unsafe fn decompress_bmi2(
                                                     length - copied,
                                                 );
                                             }
+                                        } else if offset == 25 {
+                                            let mut copied = 16;
+                                            // For offset 25, src[16] is dest[-9].
+                                            // We need dest[-9..-1] (9 bytes) at indices 7..15 of v_align.
+                                            // Load 8 bytes from src[16] (dest[-9..-2]) and 1 byte from src[24] (dest[-1]).
+                                            // Avoids reading dest[0] (which would be STLF hazard).
+                                            let val = std::ptr::read_unaligned(src.add(16) as *const u64);
+                                            let c = *src.add(24);
+                                            let v_temp = _mm_cvtsi64_si128(val as i64);
+                                            let v_temp = _mm_insert_epi8(v_temp, c as i32, 8);
+                                            // Shift left by 7 bytes. dest[-9] (byte 0) moves to byte 7. dest[-1] (byte 8) moves to byte 15.
+                                            let mut v_align = _mm_slli_si128(v_temp, 7);
+                                            let mut v_prev = v;
+
+                                            while copied + 16 <= length {
+                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 7);
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v_next,
+                                                );
+                                                v_align = v_prev;
+                                                v_prev = v_next;
+                                                copied += 16;
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else if offset == 23 {
                                             let mut copied = 16;
                                             // src[16] is dest[-7]. We need dest[-7..-1] (7 bytes).

@@ -32,6 +32,37 @@ fn bench_crc32_slice8(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_decompress_offset25(c: &mut Criterion) {
+    let path = "bench_data/data_offset25.bin";
+    if !Path::new(path).exists() {
+        return;
+    }
+    let original_data = read_file(path);
+    let size = original_data.len();
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset25");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset25", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
 fn bench_decompress_offset22(c: &mut Criterion) {
     let path = "bench_data/data_offset22.bin";
     if !Path::new(path).exists() {
@@ -1212,6 +1243,7 @@ criterion_group!(
     bench_decompress_offset22,
     bench_decompress_offset23,
     bench_decompress_offset24,
+    bench_decompress_offset25,
 );
 criterion_main!(benches);
 
