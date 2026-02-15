@@ -455,6 +455,37 @@ pub unsafe fn decompress_bmi2(
                                                 );
                                                 copied += copy_len;
                                             }
+                                        } else if offset == 22 {
+                                            let mut copied = 16;
+                                            // For offset 22, src[16] is dest[-6].
+                                            // We need dest[-6..-1] at bytes 10..15 of v_align.
+                                            // Load 6 bytes from src[16] (dest[-6..0]).
+                                            // Avoid RAW stall on dest[0] by loading 4+2 bytes separately.
+                                            let v0 = std::ptr::read_unaligned(src.add(16) as *const u32);
+                                            let v1 = std::ptr::read_unaligned(src.add(20) as *const u16);
+                                            let val = (v0 as u64) | ((v1 as u64) << 32);
+                                            let v_temp = _mm_cvtsi64_si128(val as i64);
+                                            let mut v_align = _mm_slli_si128(v_temp, 10);
+                                            let mut v_prev = v;
+
+                                            while copied + 16 <= length {
+                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 10);
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v_next,
+                                                );
+                                                v_align = v_prev;
+                                                v_prev = v_next;
+                                                copied += 16;
+                                            }
+
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else if offset == 16 {
                                             let mut copied = 16;
                                             while copied + 64 <= length {
