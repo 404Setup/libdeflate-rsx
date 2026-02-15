@@ -265,7 +265,7 @@ fn bench_compress(c: &mut Criterion) {
         ("L", "bench_data/data_L.bin"),
         ("XL", "bench_data/data_XL.bin"),
     ];
-    let levels = [1, 6, 9];
+    let levels = [1, 6, 9, 10];
 
     let mut group = c.benchmark_group("Compress");
 

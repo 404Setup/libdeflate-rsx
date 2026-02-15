@@ -934,13 +934,11 @@ impl BtMatchFinder {
 
         unsafe {
             let src = data.as_ptr().add(pos);
-            let h3 = (((src.read() as u32) << 16)
-                | ((src.add(1).read() as u32) << 8)
-                | (src.add(2).read() as u32))
-                .wrapping_mul(0x1E35A7BD);
+            let val = src.cast::<u32>().read_unaligned();
+            let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
             let h3 = (h3 >> 16) as usize;
 
-            let h4 = src.cast::<u32>().read_unaligned().wrapping_mul(0x1E35A7BD);
+            let h4 = val.wrapping_mul(0x1E35A7BD);
             let h4 = (h4 >> 16) as usize;
 
             let abs_pos = self.base_offset + pos;
@@ -1068,13 +1066,11 @@ impl BtMatchFinder {
 
         unsafe {
             let src = data.as_ptr().add(pos);
-            let h3 = (((src.read() as u32) << 16)
-                | ((src.add(1).read() as u32) << 8)
-                | (src.add(2).read() as u32))
-                .wrapping_mul(0x1E35A7BD);
+            let val = src.cast::<u32>().read_unaligned();
+            let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
             let h3 = (h3 >> 16) as usize;
 
-            let h4 = src.cast::<u32>().read_unaligned().wrapping_mul(0x1E35A7BD);
+            let h4 = val.wrapping_mul(0x1E35A7BD);
             let h4 = (h4 >> 16) as usize;
 
             let abs_pos = self.base_offset + pos;
