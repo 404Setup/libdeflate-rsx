@@ -33,6 +33,60 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
         let mut chunk_n = n;
         // Optimization: Unroll loop to process 64 bytes per iteration (two 32-byte chunks).
         // This amortizes loop overhead and allows better pipelining of the `sad` and `unpack` operations.
+        while chunk_n >= 128 {
+            let data_a_1 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let data_b_1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+            let data_a_2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+            let data_b_2 = _mm_loadu_si128(data.as_ptr().add(48) as *const __m128i);
+            let data_a_3 = _mm_loadu_si128(data.as_ptr().add(64) as *const __m128i);
+            let data_b_3 = _mm_loadu_si128(data.as_ptr().add(80) as *const __m128i);
+            let data_a_4 = _mm_loadu_si128(data.as_ptr().add(96) as *const __m128i);
+            let data_b_4 = _mm_loadu_si128(data.as_ptr().add(112) as *const __m128i);
+
+            // Accumulate byte sums
+            v_byte_sums_a = _mm_add_epi16(v_byte_sums_a, _mm_unpacklo_epi8(data_a_1, v_zero));
+            v_byte_sums_b = _mm_add_epi16(v_byte_sums_b, _mm_unpackhi_epi8(data_a_1, v_zero));
+            v_byte_sums_c = _mm_add_epi16(v_byte_sums_c, _mm_unpacklo_epi8(data_b_1, v_zero));
+            v_byte_sums_d = _mm_add_epi16(v_byte_sums_d, _mm_unpackhi_epi8(data_b_1, v_zero));
+
+            v_byte_sums_a = _mm_add_epi16(v_byte_sums_a, _mm_unpacklo_epi8(data_a_2, v_zero));
+            v_byte_sums_b = _mm_add_epi16(v_byte_sums_b, _mm_unpackhi_epi8(data_a_2, v_zero));
+            v_byte_sums_c = _mm_add_epi16(v_byte_sums_c, _mm_unpacklo_epi8(data_b_2, v_zero));
+            v_byte_sums_d = _mm_add_epi16(v_byte_sums_d, _mm_unpackhi_epi8(data_b_2, v_zero));
+
+            v_byte_sums_a = _mm_add_epi16(v_byte_sums_a, _mm_unpacklo_epi8(data_a_3, v_zero));
+            v_byte_sums_b = _mm_add_epi16(v_byte_sums_b, _mm_unpackhi_epi8(data_a_3, v_zero));
+            v_byte_sums_c = _mm_add_epi16(v_byte_sums_c, _mm_unpacklo_epi8(data_b_3, v_zero));
+            v_byte_sums_d = _mm_add_epi16(v_byte_sums_d, _mm_unpackhi_epi8(data_b_3, v_zero));
+
+            v_byte_sums_a = _mm_add_epi16(v_byte_sums_a, _mm_unpacklo_epi8(data_a_4, v_zero));
+            v_byte_sums_b = _mm_add_epi16(v_byte_sums_b, _mm_unpackhi_epi8(data_a_4, v_zero));
+            v_byte_sums_c = _mm_add_epi16(v_byte_sums_c, _mm_unpacklo_epi8(data_b_4, v_zero));
+            v_byte_sums_d = _mm_add_epi16(v_byte_sums_d, _mm_unpackhi_epi8(data_b_4, v_zero));
+
+            // SAD calculation
+            let sad_1 = _mm_add_epi32(_mm_sad_epu8(data_a_1, v_zero), _mm_sad_epu8(data_b_1, v_zero));
+            let sad_2 = _mm_add_epi32(_mm_sad_epu8(data_a_2, v_zero), _mm_sad_epu8(data_b_2, v_zero));
+            let sad_3 = _mm_add_epi32(_mm_sad_epu8(data_a_3, v_zero), _mm_sad_epu8(data_b_3, v_zero));
+            let sad_4 = _mm_add_epi32(_mm_sad_epu8(data_a_4, v_zero), _mm_sad_epu8(data_b_4, v_zero));
+
+            // Update v_s1_sums
+            // v_s1_sums += 4 * v_s1 (initial) + 3*sad_1 + 2*sad_2 + 1*sad_3
+            let s1_x4 = _mm_slli_epi32(v_s1, 2);
+            let inc_1 = _mm_add_epi32(
+                _mm_add_epi32(sad_1, _mm_slli_epi32(sad_1, 1)), // 3*sad_1
+                _mm_add_epi32(_mm_slli_epi32(sad_2, 1), sad_3)  // 2*sad_2 + sad_3
+            );
+            v_s1_sums = _mm_add_epi32(v_s1_sums, _mm_add_epi32(s1_x4, inc_1));
+
+            // Update v_s1
+            let total_sad = _mm_add_epi32(_mm_add_epi32(sad_1, sad_2), _mm_add_epi32(sad_3, sad_4));
+            v_s1 = _mm_add_epi32(v_s1, total_sad);
+
+            data = &data[128..];
+            chunk_n -= 128;
+        }
+
         while chunk_n >= 64 {
             let data_a_1 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
             let data_b_1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
@@ -47,10 +101,6 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
             let sad_1 = _mm_add_epi32(sad_a_1, sad_b_1);
             let sad_2 = _mm_add_epi32(sad_a_2, sad_b_2);
 
-            // Update s2 via `v_s1_sums`.
-            // Ideally: `v_s1_sums` += `v_s1` (after 1st 32B) + `v_s1` (after 2nd 32B).
-            // `v_s1_mid` = `v_s1_old` + `sad_1`.
-            // `v_s1_sums` += `v_s1_old` + (`v_s1_old` + `sad_1`) = `2 * v_s1_old` + `sad_1`.
             let v_s1_sh = _mm_slli_epi32(v_s1, 1);
             v_s1_sums = _mm_add_epi32(v_s1_sums, _mm_add_epi32(v_s1_sh, sad_1));
             v_s1 = _mm_add_epi32(v_s1, _mm_add_epi32(sad_1, sad_2));
