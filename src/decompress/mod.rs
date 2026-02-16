@@ -15,7 +15,7 @@ pub use self::tables::{
 macro_rules! refill_bits {
     ($input:expr, $in_idx:expr, $bitbuf:expr, $bitsleft:expr) => {
         if $bitsleft < 32 {
-            if $input.len().wrapping_sub($in_idx) >= 8 {
+            if $input.len().saturating_sub($in_idx) >= 8 {
                 let word = unsafe { ($input.as_ptr().add($in_idx) as *const u64).read_unaligned() };
                 let word = u64::from_le(word);
                 $bitbuf |= word << $bitsleft;
