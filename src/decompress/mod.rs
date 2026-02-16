@@ -1,3 +1,4 @@
+#![deny(unsafe_op_in_unsafe_fn)]
 mod tables;
 
 use self::tables::*;
@@ -1608,42 +1609,44 @@ impl Decompressor {
 
 #[inline(always)]
 pub(crate) unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
-    match offset {
-        1 => {
-            let b = *src_ptr as u64;
-            b.wrapping_mul(0x0101010101010101)
-        }
-        2 => {
-            let w = std::ptr::read_unaligned(src_ptr as *const u16) as u64;
-            w | (w << 16) | (w << 32) | (w << 48)
-        }
-        3 => {
-            let b0 = *src_ptr as u64;
-            let b1 = *src_ptr.add(1) as u64;
-            let b2 = *src_ptr.add(2) as u64;
-            let p_le = b0
-                | (b1 << 8)
-                | (b2 << 16)
-                | (b0 << 24)
-                | (b1 << 32)
-                | (b2 << 40)
-                | (b0 << 48)
-                | (b1 << 56);
-            u64::from_le(p_le)
-        }
-        4 => {
-            let w = std::ptr::read_unaligned(src_ptr as *const u32) as u64;
-            w | (w << 32)
-        }
-        _ => {
-            let mut p_le = 0u64;
-            for i in 0..offset {
-                p_le |= (*src_ptr.add(i) as u64) << (i * 8);
+    unsafe {
+        match offset {
+            1 => {
+                let b = *src_ptr as u64;
+                b.wrapping_mul(0x0101010101010101)
             }
-            for i in 0..(8 - offset) {
-                p_le |= (*src_ptr.add(i) as u64) << ((offset + i) * 8);
+            2 => {
+                let w = std::ptr::read_unaligned(src_ptr as *const u16) as u64;
+                w | (w << 16) | (w << 32) | (w << 48)
             }
-            u64::from_le(p_le)
+            3 => {
+                let b0 = *src_ptr as u64;
+                let b1 = *src_ptr.add(1) as u64;
+                let b2 = *src_ptr.add(2) as u64;
+                let p_le = b0
+                    | (b1 << 8)
+                    | (b2 << 16)
+                    | (b0 << 24)
+                    | (b1 << 32)
+                    | (b2 << 40)
+                    | (b0 << 48)
+                    | (b1 << 56);
+                u64::from_le(p_le)
+            }
+            4 => {
+                let w = std::ptr::read_unaligned(src_ptr as *const u32) as u64;
+                w | (w << 32)
+            }
+            _ => {
+                let mut p_le = 0u64;
+                for i in 0..offset {
+                    p_le |= (*src_ptr.add(i) as u64) << (i * 8);
+                }
+                for i in 0..(8 - offset) {
+                    p_le |= (*src_ptr.add(i) as u64) << ((offset + i) * 8);
+                }
+                u64::from_le(p_le)
+            }
         }
     }
 }
