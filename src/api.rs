@@ -76,7 +76,12 @@ impl Compressor {
             &mut [std::mem::MaybeUninit<u8>],
         ) -> (CompressResult, usize),
     {
-        let mut output = vec![0u8; bound];
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(bound)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        output.resize(bound, 0);
+
         let out_uninit = unsafe {
             std::slice::from_raw_parts_mut(
                 output.as_mut_ptr() as *mut std::mem::MaybeUninit<u8>,
@@ -207,7 +212,12 @@ impl Decompressor {
             ));
         }
 
-        let mut output = vec![0u8; expected_size];
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(expected_size)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        output.resize(expected_size, 0);
+
         let (res, _, size) = f(&mut self.inner, data, &mut output);
         if res == crate::decompress::DecompressResult::Success {
             output.truncate(size);
