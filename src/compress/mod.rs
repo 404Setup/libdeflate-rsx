@@ -306,8 +306,14 @@ impl Compressor {
                 (self.litlen_codewords[i] as u64) | ((self.litlen_lens[i] as u64) << 32);
         }
         for i in 0..DEFLATE_NUM_OFFSET_SYMS {
-            self.offset_table[i] =
+            let mut entry =
                 (self.offset_codewords[i] as u64) | ((self.offset_lens[i] as u64) << 32);
+            if i < 30 {
+                // SAFETY: Arrays are static consts of size 30.
+                entry |= (unsafe { *OFFSET_EXTRA_BITS_TABLE.get_unchecked(i) } as u64) << 40;
+                entry |= (unsafe { *OFFSET_BASE_TABLE.get_unchecked(i) } as u64) << 48;
+            }
+            self.offset_table[i] = entry;
         }
 
         for len in 3..=DEFLATE_MAX_MATCH_LEN {
@@ -1674,10 +1680,9 @@ impl Compressor {
         let off_slot = self.get_offset_slot(offset);
         let entry = unsafe { *self.offset_table.get_unchecked(off_slot) };
         let off_code = entry as u32;
-        let off_len = (entry >> 32) as u32;
-
-        let extra_bits = self.get_offset_extra_bits(off_slot) as u32;
-        let base = self.get_offset_base(off_slot) as u32;
+        let off_len = (entry >> 32) as u8 as u32;
+        let extra_bits = (entry >> 40) as u8 as u32;
+        let base = (entry >> 48) as u16 as u32;
 
         let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
         let off_len_total = off_len + extra_bits;
@@ -1700,9 +1705,6 @@ impl Compressor {
         let l = 31 - off.leading_zeros();
         let slot = (2 * l) as usize;
         slot + ((off >> (l - 1)) as usize & 1)
-    }
-    fn get_offset_base(&self, slot: usize) -> usize {
-        OFFSET_BASE_TABLE[slot] as usize
     }
     fn get_offset_extra_bits(&self, slot: usize) -> usize {
         OFFSET_EXTRA_BITS_TABLE[slot] as usize
