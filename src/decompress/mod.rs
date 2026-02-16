@@ -149,6 +149,8 @@ impl Decompressor {
                 // This prevents state corruption if the Decompressor is reused for streaming.
                 self.state = DecompressorState::Start;
                 self.is_final_block = false;
+                self.bitbuf = 0;
+                self.bitsleft = 0;
                 return res;
             }
         }
