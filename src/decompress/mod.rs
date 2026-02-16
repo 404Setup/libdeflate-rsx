@@ -65,6 +65,7 @@ pub struct Decompressor {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[must_use = "Decompression result must be checked for errors"]
 pub enum DecompressResult {
     Success,
     BadData,
