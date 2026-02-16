@@ -80,6 +80,7 @@ pub const MAX_OFFSET_CODEWORD_LEN: usize = 15;
 pub const MAX_PRE_CODEWORD_LEN: usize = 7;
 
 #[derive(Debug, PartialEq, Eq)]
+#[must_use = "Compression result must be checked to ensure data integrity"]
 pub enum CompressResult {
     Success,
     InsufficientSpace,
