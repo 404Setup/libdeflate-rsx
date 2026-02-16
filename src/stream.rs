@@ -64,6 +64,9 @@ impl<W: Write + Send> DeflateEncoder<W> {
                 let output = &mut self.output_buffers[0];
                 let bound = Compressor::deflate_compress_bound(chunk.len());
                 if output.len() < bound {
+                    output
+                        .try_reserve(bound - output.len())
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                     output.resize(bound, 0);
                 }
 
@@ -95,6 +98,9 @@ impl<W: Write + Send> DeflateEncoder<W> {
                     .map(|(i, ((&chunk, compressor), output))| {
                         let bound = Compressor::deflate_compress_bound(chunk.len());
                         if output.len() < bound {
+                            output
+                                .try_reserve(bound - output.len())
+                                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                             output.resize(bound, 0);
                         }
 
@@ -137,6 +143,9 @@ impl<W: Write + Send> DeflateEncoder<W> {
             let output = &mut self.output_buffers[0];
             let bound = Compressor::deflate_compress_bound(self.buffer.len());
             if output.len() < bound {
+                output
+                    .try_reserve(bound - output.len())
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                 output.resize(bound, 0);
             }
 
