@@ -59,11 +59,13 @@ impl<'a> Bitstream<'a> {
         // This reduces store frequency compared to flushing at 4 bytes (32 bits) with byte-wise writes,
         // but more frequent than 48 bits. However, it simplifies logic for 32-bit writes.
         if self.bitcount >= 32 {
-            if self.out_idx + 8 <= self.output.len() {
+            // Optimization: Write 32 bits at once if buffer space allows.
+            // Using u32 write avoids 8-byte boundary check and reduces memory bandwidth compared to u64 blind write.
+            if self.out_idx + 4 <= self.output.len() {
                 unsafe {
                     std::ptr::write_unaligned(
-                        self.output.as_mut_ptr().add(self.out_idx) as *mut u64,
-                        self.bitbuf.to_le(),
+                        self.output.as_mut_ptr().add(self.out_idx) as *mut u32,
+                        (self.bitbuf as u32).to_le(),
                     );
                 }
                 self.out_idx += 4;
