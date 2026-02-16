@@ -605,10 +605,14 @@ impl MatchFinder {
             return (0, 0);
         }
 
+        // Optimization: Pre-calculate whether it's safe to read 4 bytes at `pos`.
+        // This is used to optimize the loop below.
+        let safe_to_read_u32 = pos + 4 <= data.len();
+
         let src = data.as_ptr().add(pos);
         let src_val;
 
-        if pos + 4 <= data.len() {
+        if safe_to_read_u32 {
             src_val = (src as *const u32).read_unaligned() & 0xFFFFFF;
         } else {
             src_val = ((src.read() as u32) << 0)
@@ -658,7 +662,13 @@ impl MatchFinder {
             let match_ptr = data.as_ptr().add(p_rel);
 
             let match_val;
-            if p_rel + 4 <= data.len() {
+            // Optimization: If we could safely read a u32 at the current position (`pos`),
+            // we can definitely read a u32 at any previous match position (`p_rel`), because
+            // `p_rel < pos` implies `p_rel + 4 < pos + 4 <= data.len()`.
+            // This allows us to lift the boundary check out of the loop for the vast majority of cases.
+            if safe_to_read_u32 {
+                match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
+            } else if p_rel + 4 <= data.len() {
                 match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
                 match_val = ((match_ptr.read() as u32) << 0)
@@ -839,11 +849,14 @@ impl HtMatchFinder {
             return (0, 0);
         }
 
+        // Optimization: Pre-calculate whether it's safe to read 4 bytes at `pos`.
+        let safe_to_read_u32 = pos + 4 <= data.len();
+
         unsafe {
             let src = data.as_ptr().add(pos);
             let src_val;
 
-            if pos + 4 <= data.len() {
+            if safe_to_read_u32 {
                 src_val = (src as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
                 src_val = ((src.read() as u32) << 0)
@@ -872,7 +885,9 @@ impl HtMatchFinder {
             let match_ptr = data.as_ptr().add(p_rel);
 
             let match_val;
-            if p_rel + 4 <= data.len() {
+            if safe_to_read_u32 {
+                match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
+            } else if p_rel + 4 <= data.len() {
                 match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
                 match_val = ((match_ptr.read() as u32) << 0)
