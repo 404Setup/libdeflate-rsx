@@ -53,3 +53,41 @@ fn test_valid_decompression_within_limit() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), original);
 }
+
+#[test]
+fn test_decompression_ratio_limit() {
+    let mut decompressor = Decompressor::new();
+
+    // Default limit is 2000:1 + 4096.
+    // Let's create a small input.
+    let input = [0u8; 10];
+    // Limit = 10 * 2000 + 4096 = 24096.
+
+    // Case 1: Within default limit (20000 <= 24096)
+    // Should NOT return InvalidInput (might return InvalidData because input is garbage)
+    let res = decompressor.decompress_deflate(&input, 20000);
+    if let Err(e) = &res {
+        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Should not reject 20000 bytes for 10 bytes input with default ratio");
+    }
+
+    // Case 2: Exceed default limit (30000 > 24096)
+    // Should return InvalidInput
+    let res = decompressor.decompress_deflate(&input, 30000);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidInput, "Should reject 30000 bytes for 10 bytes input with default ratio");
+
+    // Case 3: Set custom limit ratio to 10
+    decompressor.set_limit_ratio(10);
+    // New limit = 10 * 10 + 4096 = 4196.
+
+    // Case 4: Exceed custom limit (5000 > 4196)
+    let res = decompressor.decompress_deflate(&input, 5000);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidInput, "Should reject 5000 bytes for 10 bytes input with ratio 10");
+
+    // Case 5: Within custom limit (4000 <= 4196)
+    let res = decompressor.decompress_deflate(&input, 4000);
+    if let Err(e) = &res {
+        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Should not reject 4000 bytes for 10 bytes input with ratio 10");
+    }
+}

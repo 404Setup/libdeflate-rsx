@@ -132,6 +132,7 @@ impl Compressor {
 pub struct Decompressor {
     inner: InternalDecompressor,
     max_memory_limit: usize,
+    limit_ratio: usize,
 }
 
 impl Decompressor {
@@ -139,11 +140,16 @@ impl Decompressor {
         Self {
             inner: InternalDecompressor::new(),
             max_memory_limit: usize::MAX,
+            limit_ratio: 2000,
         }
     }
 
     pub fn set_max_memory_limit(&mut self, limit: usize) {
         self.max_memory_limit = limit;
+    }
+
+    pub fn set_limit_ratio(&mut self, ratio: usize) {
+        self.limit_ratio = ratio;
     }
 
     pub fn decompress_deflate(&mut self, data: &[u8], expected_size: usize) -> io::Result<Vec<u8>> {
@@ -190,7 +196,7 @@ impl Decompressor {
         // Security check: prevent massive allocations for small inputs (Zip bomb prevention)
         // Max compression ratio for Deflate is ~1032:1. We use a generous limit of 2000:1 + overhead.
         // This prevents allocating GBs of memory for small inputs.
-        let limit = data.len().saturating_mul(2000).saturating_add(4096);
+        let limit = data.len().saturating_mul(self.limit_ratio).saturating_add(4096);
         if expected_size > limit {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
