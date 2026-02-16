@@ -114,6 +114,12 @@ impl Compressor {
             &mut [std::mem::MaybeUninit<u8>],
         ) -> (CompressResult, usize),
     {
+        if is_overlapping(data, output) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Input and output buffers overlap",
+            ));
+        }
         let out_uninit = unsafe {
             std::slice::from_raw_parts_mut(
                 output.as_mut_ptr() as *mut std::mem::MaybeUninit<u8>,
@@ -249,6 +255,12 @@ impl Decompressor {
             &mut [u8],
         ) -> (crate::decompress::DecompressResult, usize, usize),
     {
+        if is_overlapping(data, output) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Input and output buffers overlap",
+            ));
+        }
         let (res, _, size) = f(&mut self.inner, data, output);
         if res == crate::decompress::DecompressResult::Success {
             Ok(size)
@@ -259,4 +271,17 @@ impl Decompressor {
             ))
         }
     }
+}
+
+fn is_overlapping(s1: &[u8], s2: &[u8]) -> bool {
+    let p1 = s1.as_ptr() as usize;
+    let len1 = s1.len();
+    let p2 = s2.as_ptr() as usize;
+    let len2 = s2.len();
+
+    let end1 = p1.checked_add(len1).unwrap_or(usize::MAX);
+    let end2 = p2.checked_add(len2).unwrap_or(usize::MAX);
+
+    use std::cmp::{max, min};
+    max(p1, p2) < min(end1, end2)
 }
