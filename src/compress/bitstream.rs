@@ -18,21 +18,7 @@ impl<'a> Bitstream<'a> {
     }
 
     #[inline(always)]
-    pub fn write_bits(&mut self, mut bits: u32, mut count: u32) -> bool {
-        // Security/Robustness: Handle count > 16 by splitting writes.
-        // The underlying write_bits_unchecked supports max 16 bits at a time.
-        // This prevents potential assertion failures in debug builds and data corruption in release builds.
-        while count > 16 {
-            // Safety: count is 16, and we mask bits to 16 bits, so the requirement
-            // `bits & !((1 << count) - 1) == 0` is satisfied.
-            unsafe {
-                if !self.write_bits_unchecked(bits & 0xFFFF, 16) {
-                    return false;
-                }
-            }
-            bits >>= 16;
-            count -= 16;
-        }
+    pub fn write_bits(&mut self, bits: u32, count: u32) -> bool {
         if count == 0 {
             return true;
         }
@@ -49,13 +35,7 @@ impl<'a> Bitstream<'a> {
     /// * `bits` must not have any bits set above `count`.
     #[inline(always)]
     pub unsafe fn write_bits_upto_32(&mut self, bits: u32, count: u32) -> bool {
-        if count <= 16 {
-            return self.write_bits_unchecked(bits, count);
-        }
-        if !self.write_bits_unchecked(bits & 0xFFFF, 16) {
-            return false;
-        }
-        self.write_bits_unchecked(bits >> 16, count - 16)
+        self.write_bits_unchecked(bits, count)
     }
 
     /// Writes bits without checking count or masking bits.
@@ -67,18 +47,18 @@ impl<'a> Bitstream<'a> {
     #[inline(always)]
     pub unsafe fn write_bits_unchecked(&mut self, bits: u32, count: u32) -> bool {
         debug_assert!(count > 0);
-        // Optimization assumes we never write more than 16 bits at a time.
-        // This ensures that `self.bitcount` (max 47 before add) + count (max 16) <= 63,
+        // Optimization: Flush every 32 bits.
+        // This ensures that `self.bitcount` (max 31 before add) + count (max 32) <= 63,
         // preventing u64 bitbuf overflow.
-        debug_assert!(count <= 16);
+        debug_assert!(count <= 32);
 
         self.bitbuf |= (bits as u64) << self.bitcount;
         self.bitcount += count;
 
-        // Flush when we have at least 6 bytes (48 bits).
-        // This reduces store frequency compared to flushing at 4 bytes (32 bits).
-        // We flush a constant 6 bytes (48 bits) to enable constant shifts and avoids variable logic.
-        if self.bitcount >= 48 {
+        // Flush when we have at least 4 bytes (32 bits).
+        // This reduces store frequency compared to flushing at 4 bytes (32 bits) with byte-wise writes,
+        // but more frequent than 48 bits. However, it simplifies logic for 32-bit writes.
+        if self.bitcount >= 32 {
             if self.out_idx + 8 <= self.output.len() {
                 unsafe {
                     std::ptr::write_unaligned(
@@ -86,9 +66,9 @@ impl<'a> Bitstream<'a> {
                         self.bitbuf.to_le(),
                     );
                 }
-                self.out_idx += 6;
-                self.bitbuf >>= 48;
-                self.bitcount -= 48;
+                self.out_idx += 4;
+                self.bitbuf >>= 32;
+                self.bitcount -= 32;
                 return true;
             }
 
