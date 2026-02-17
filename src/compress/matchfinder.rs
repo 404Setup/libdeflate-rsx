@@ -691,12 +691,10 @@ impl MatchFinder {
                                 break;
                             }
                         }
-                    } else if (match_val_4 & 0xFFFFFF) == src_val {
-                        if 3 > best_len {
-                            best_len = 3;
-                            best_offset = offset;
-                            on_match(3, offset);
-                        }
+                    } else if best_len < 3 && (match_val_4 & 0xFFFFFF) == src_val {
+                        best_len = 3;
+                        best_offset = offset;
+                        on_match(3, offset);
                     }
                 } else {
                     let match_val;
