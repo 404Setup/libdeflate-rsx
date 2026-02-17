@@ -11,3 +11,7 @@
 ## 2024-05-24 - CRC32 Tail Optimization
 **Learning:** For SIMD algorithms (like CRC32 PCLMULQDQ), the cost of handling small tails (e.g., < 16 bytes) with a scalar byte-loop can dominate performance for small inputs. Using an intermediate optimized scalar path (e.g., slice-by-4 using existing slice-by-8 tables) can significantly improve throughput (33% gain for 28 bytes) by avoiding the slow byte-by-byte loop.
 **Action:** When implementing SIMD fallbacks, ensure the scalar fallback is also optimized for chunks smaller than the SIMD width but larger than a single byte.
+
+## 2026-06-03 - [Adler32 AVX2 Register Spilling]
+**Learning:** An aggressive 256-byte loop unrolling in `adler32_x86_avx2` using 8 separate vector accumulators caused a 36% throughput regression for 512-byte inputs compared to 384 bytes. The excessive use of YMM registers (accumulators + constants + temporaries) forced the compiler to spill to the stack.
+**Action:** When unrolling loops for ILP, carefully balance the number of independent accumulators against the register file size. Reusing accumulators (4 instead of 8) eliminated spills while maintaining instruction-level parallelism for the heavy arithmetic instructions.
