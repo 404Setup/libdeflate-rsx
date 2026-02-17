@@ -11,10 +11,9 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     let mut data = p;
 
     if len < 16 {
-        // Optimize: For small inputs >= 8 bytes, the slicing-by-8 algorithm is significantly
-        // faster than the byte-by-byte loop (crc32_slice1), as it processes 8 bytes at a time
-        // using instruction-level parallelism. Benchmarks show a ~2x speedup for 8-15 bytes.
-        if len >= 8 {
+        // Optimize: For small inputs >= 4 bytes, the slicing-by-8 algorithm (extended to handle 4 bytes)
+        // is significantly faster than the byte-by-byte loop (crc32_slice1).
+        if len >= 4 {
             return crate::crc32::crc32_slice8(crc, data);
         }
         return crate::crc32::crc32_slice1(crc, data);
@@ -198,7 +197,7 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
 
     crc = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 8 {
+    if len >= 4 {
         crc = crate::crc32::crc32_slice8(crc, data);
     } else if len > 0 {
         crc = crate::crc32::crc32_slice1(crc, data);
@@ -605,7 +604,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
 
     let mut res = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 8 {
+    if len >= 4 {
         res = crate::crc32::crc32_slice8(res, data);
     } else if len > 0 {
         res = crate::crc32::crc32_slice1(res, data);
@@ -692,7 +691,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
         );
     } else {
         if len < 16 {
-            if len >= 8 {
+            if len >= 4 {
                 return crate::crc32::crc32_slice8(crc, data);
             }
             return crate::crc32::crc32_slice1(crc, data);
@@ -777,7 +776,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
 
     let mut res = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 8 {
+    if len >= 4 {
         res = crate::crc32::crc32_slice8(res, data);
     } else if len > 0 {
         res = crate::crc32::crc32_slice1(res, data);

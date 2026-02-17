@@ -7,3 +7,7 @@
 ## 2024-05-23 - AVX2 Register Pressure in Manual Unrolling
 **Learning:** When manually unrolling AVX2 loops (e.g., match finding), using `_mm256_cmpeq_epi8(v1, v2)` inside error paths forces the compiler to keep `v1` and `v2` alive, increasing register pressure.
 **Action:** Reuse the already computed `xor` vector (used for the fast check) by comparing it against zero: `_mm256_cmpeq_epi8(xor, zero)`. This frees up registers for the unrolled loop.
+
+## 2024-05-24 - CRC32 Tail Optimization
+**Learning:** For SIMD algorithms (like CRC32 PCLMULQDQ), the cost of handling small tails (e.g., < 16 bytes) with a scalar byte-loop can dominate performance for small inputs. Using an intermediate optimized scalar path (e.g., slice-by-4 using existing slice-by-8 tables) can significantly improve throughput (33% gain for 28 bytes) by avoiding the slow byte-by-byte loop.
+**Action:** When implementing SIMD fallbacks, ensure the scalar fallback is also optimized for chunks smaller than the SIMD width but larger than a single byte.

@@ -28,6 +28,18 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         }
         len -= 8;
     }
+    if len >= 4 {
+        let v = u32::from_le(unsafe { std::ptr::read_unaligned(ptr as *const u32) });
+        crc ^= v;
+        crc = CRC32_SLICE8_TABLE[0x300 + (crc as u8) as usize]
+            ^ CRC32_SLICE8_TABLE[0x200 + ((crc >> 8) as u8) as usize]
+            ^ CRC32_SLICE8_TABLE[0x100 + ((crc >> 16) as u8) as usize]
+            ^ CRC32_SLICE8_TABLE[0x000 + ((crc >> 24) as u8) as usize];
+        unsafe {
+            ptr = ptr.add(4);
+        }
+        len -= 4;
+    }
     let remaining = unsafe { std::slice::from_raw_parts(ptr, len) };
     for &b in remaining {
         crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
