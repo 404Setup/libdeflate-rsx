@@ -18,43 +18,40 @@ macro_rules! adler32_tail {
         // We know len < 16 here because larger chunks are handled by SIMD or unrolled loops before calling this macro.
         if $len > 0 {
             if $len >= 4 {
-                let b0 = *$ptr as u32;
-                let b1 = *$ptr.add(1) as u32;
-                let b2 = *$ptr.add(2) as u32;
-                let b3 = *$ptr.add(3) as u32;
+                let v = ($ptr as *const u32).read_unaligned();
+                let b0 = v & 0xFF;
+                let b1 = (v >> 8) & 0xFF;
+                let b2 = (v >> 16) & 0xFF;
+                let b3 = (v >> 24);
 
-                $s1 += b0; $s2 += $s1;
-                $s1 += b1; $s2 += $s1;
-                $s1 += b2; $s2 += $s1;
-                $s1 += b3; $s2 += $s1;
-
-                $ptr = $ptr.add(4);
-                $len -= 4;
-            }
-            if $len >= 4 {
-                let b0 = *$ptr as u32;
-                let b1 = *$ptr.add(1) as u32;
-                let b2 = *$ptr.add(2) as u32;
-                let b3 = *$ptr.add(3) as u32;
-
-                $s1 += b0; $s2 += $s1;
-                $s1 += b1; $s2 += $s1;
-                $s1 += b2; $s2 += $s1;
-                $s1 += b3; $s2 += $s1;
+                $s2 += ($s1 << 2) + (b0 << 2) + (b1.wrapping_mul(3)) + (b2 << 1) + b3;
+                $s1 += b0 + b1 + b2 + b3;
 
                 $ptr = $ptr.add(4);
                 $len -= 4;
             }
             if $len >= 4 {
-                let b0 = *$ptr as u32;
-                let b1 = *$ptr.add(1) as u32;
-                let b2 = *$ptr.add(2) as u32;
-                let b3 = *$ptr.add(3) as u32;
+                let v = ($ptr as *const u32).read_unaligned();
+                let b0 = v & 0xFF;
+                let b1 = (v >> 8) & 0xFF;
+                let b2 = (v >> 16) & 0xFF;
+                let b3 = (v >> 24);
 
-                $s1 += b0; $s2 += $s1;
-                $s1 += b1; $s2 += $s1;
-                $s1 += b2; $s2 += $s1;
-                $s1 += b3; $s2 += $s1;
+                $s2 += ($s1 << 2) + (b0 << 2) + (b1.wrapping_mul(3)) + (b2 << 1) + b3;
+                $s1 += b0 + b1 + b2 + b3;
+
+                $ptr = $ptr.add(4);
+                $len -= 4;
+            }
+            if $len >= 4 {
+                let v = ($ptr as *const u32).read_unaligned();
+                let b0 = v & 0xFF;
+                let b1 = (v >> 8) & 0xFF;
+                let b2 = (v >> 16) & 0xFF;
+                let b3 = (v >> 24);
+
+                $s2 += ($s1 << 2) + (b0 << 2) + (b1.wrapping_mul(3)) + (b2 << 1) + b3;
+                $s1 += b0 + b1 + b2 + b3;
 
                 $ptr = $ptr.add(4);
                 $len -= 4;
