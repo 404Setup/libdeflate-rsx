@@ -1114,7 +1114,15 @@ impl Compressor {
                 // Max expansion is roughly 15/8 ~= 1.875 bytes per literal. 2 bytes is a safe upper bound.
                 // We add 16 bytes margin for the last flush (8 bytes) and safety.
                 if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
-                    for _ in 0..seq.litrunlen {
+                    let mut lit_remain = seq.litrunlen as usize;
+                    while lit_remain >= 2 {
+                        // SAFETY: We verified sufficient buffer space above.
+                        // `write_literals_2` writes at most 30 bits and may flush 4 bytes.
+                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
+                        in_pos += 2;
+                        lit_remain -= 2;
+                    }
+                    if lit_remain > 0 {
                         // SAFETY: We verified sufficient buffer space above.
                         // `write_literal_fast` writes at most 15 bits and may flush 4 bytes.
                         // The buffer margin guarantees `out_idx + 8 <= output.len()` for the `write_bits_unchecked_fast` call.
@@ -1315,7 +1323,13 @@ impl Compressor {
         for seq in &self.sequences {
             if seq.litrunlen > 0 {
                 if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
-                    for _ in 0..seq.litrunlen {
+                    let mut lit_remain = seq.litrunlen as usize;
+                    while lit_remain >= 2 {
+                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
+                        in_pos += 2;
+                        lit_remain -= 2;
+                    }
+                    if lit_remain > 0 {
                         unsafe { self.write_literal_fast(bs, input[in_pos]) };
                         in_pos += 1;
                     }
@@ -1704,6 +1718,20 @@ impl Compressor {
         let sym = lit as usize;
         let entry = *self.litlen_table.get_unchecked(sym);
         bs.write_bits_unchecked_fast(entry as u32, (entry >> 32) as u32)
+    }
+
+    #[inline(always)]
+    unsafe fn write_literals_2(&self, bs: &mut Bitstream, lit1: u8, lit2: u8) {
+        let entry1 = *self.litlen_table.get_unchecked(lit1 as usize);
+        let entry2 = *self.litlen_table.get_unchecked(lit2 as usize);
+
+        let code1 = entry1 as u32;
+        let len1 = (entry1 >> 32) as u32;
+
+        let code2 = entry2 as u32;
+        let len2 = (entry2 >> 32) as u32;
+
+        bs.write_bits_unchecked_fast(code1 | (code2 << len1), len1 + len2);
     }
 
     fn write_literal(&self, bs: &mut Bitstream, lit: u8) -> bool {
