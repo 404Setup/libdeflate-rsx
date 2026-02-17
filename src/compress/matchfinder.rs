@@ -663,23 +663,34 @@ impl MatchFinder {
             let p_rel = p_abs - self.base_offset;
             let match_ptr = data.as_ptr().add(p_rel);
 
-            let match_val;
-            // Optimization: If we could safely read a u32 at the current position (`pos`),
-            // we can definitely read a u32 at any previous match position (`p_rel`), because
-            // `p_rel < pos` implies `p_rel + 4 < pos + 4 <= data.len()`.
-            // This allows us to lift the boundary check out of the loop for the vast majority of cases.
-            if safe_to_read_u32 {
-                match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
-            } else if p_rel + 4 <= data.len() {
-                match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
-            } else {
-                match_val = ((match_ptr.read() as u32) << 0)
-                    | ((match_ptr.add(1).read() as u32) << 8)
-                    | ((match_ptr.add(2).read() as u32) << 16);
+            if pos + best_len >= data.len() {
+                break;
             }
 
-            if pos + best_len < data.len() && match_val == src_val {
-                if best_len < 3 || *match_ptr.add(best_len) == *src.add(best_len) {
+            let mut match_ok = true;
+            if best_len >= 3 {
+                if *match_ptr.add(best_len) != *src.add(best_len) {
+                    match_ok = false;
+                }
+            }
+
+            if match_ok {
+                let match_val;
+                // Optimization: If we could safely read a u32 at the current position (`pos`),
+                // we can definitely read a u32 at any previous match position (`p_rel`), because
+                // `p_rel < pos` implies `p_rel + 4 < pos + 4 <= data.len()`.
+                // This allows us to lift the boundary check out of the loop for the vast majority of cases.
+                if safe_to_read_u32 {
+                    match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
+                } else if p_rel + 4 <= data.len() {
+                    match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
+                } else {
+                    match_val = ((match_ptr.read() as u32) << 0)
+                        | ((match_ptr.add(1).read() as u32) << 8)
+                        | ((match_ptr.add(2).read() as u32) << 16);
+                }
+
+                if match_val == src_val {
                     let max_len = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
                     let len = (self.match_len)(match_ptr, src, max_len);
 
