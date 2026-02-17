@@ -61,19 +61,26 @@ const OFFSET_EXTRA_BITS_TABLE: [u8; 30] = [
     13,
 ];
 
-const OFFSET_SLOT_TABLE: [u8; 256] = [
-    0, 1, 2, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9,
-    10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11,
-    11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
-    12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13,
-    13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
-    14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-    14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-    14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15,
-    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-    15, 15, 15, 15, 15, 15, 15, 15,
-];
+// Optimization: Large table to avoid runtime calculation of offset slots.
+// This increases binary size by ~32KB but speeds up the hot path of match cost calculation.
+const OFFSET_SLOT_TABLE: [u8; DEFLATE_MAX_MATCH_OFFSET] = {
+    let mut table = [0; DEFLATE_MAX_MATCH_OFFSET];
+    let mut i = 0;
+    while i < DEFLATE_MAX_MATCH_OFFSET {
+        let offset = i + 1;
+        let slot = if offset <= 2 {
+            offset as u8 - 1
+        } else {
+            let off = (offset - 1) as u32;
+            let l = 31 - off.leading_zeros();
+            let slot = 2 * l;
+            (slot + ((off >> (l - 1)) & 1)) as u8
+        };
+        table[i] = slot;
+        i += 1;
+    }
+    table
+};
 
 pub const MAX_LITLEN_CODEWORD_LEN: usize = 14;
 pub const MAX_OFFSET_CODEWORD_LEN: usize = 15;
@@ -1703,13 +1710,9 @@ impl Compressor {
         LENGTH_EXTRA_BITS_TABLE[slot] as usize
     }
     fn get_offset_slot(&self, offset: usize) -> usize {
-        let off = (offset - 1) as u32;
-        if off < 256 {
-            return unsafe { *OFFSET_SLOT_TABLE.get_unchecked(off as usize) as usize };
-        }
-        let l = 31 - off.leading_zeros();
-        let slot = (2 * l) as usize;
-        slot + ((off >> (l - 1)) as usize & 1)
+        // Optimization: Use a precomputed table for all possible offsets (up to 32768)
+        // to avoid expensive bitwise operations and branches in the hot loop.
+        unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset - 1) as usize }
     }
     fn get_offset_extra_bits(&self, slot: usize) -> usize {
         OFFSET_EXTRA_BITS_TABLE[slot] as usize
