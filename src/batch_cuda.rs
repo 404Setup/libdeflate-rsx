@@ -1,5 +1,7 @@
 #[cfg(feature = "cuda")]
-use cudarc::driver::CudaDevice;
+use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
+#[cfg(feature = "cuda")]
+use cudarc::nvrtc::Ptx;
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 
@@ -19,8 +21,13 @@ impl CudaBatchCompressor {
         #[cfg(feature = "cuda")]
         {
             let device = CudaDevice::new(0)?;
-            // TODO: Load CUDA kernel here
-            let has_kernel = false;
+
+            // Load CUDA kernel
+            let ptx_src = include_str!(concat!(env!("OUT_DIR"), "/compress.ptx"));
+            let ptx = Ptx::from_src(ptx_src);
+            device.load_ptx(ptx, "compress", &["compress_kernel"])?;
+
+            let has_kernel = true;
             Ok(Self {
                 device,
                 has_kernel,
@@ -48,50 +55,73 @@ impl CudaBatchCompressor {
             }
 
             // 1. Calculate sizes and flatten inputs
-            // Flattening inputs into a single buffer reduces memory transfer overhead.
             let total_input_size: usize = inputs.iter().map(|i| i.len()).sum();
             let mut flat_input = Vec::with_capacity(total_input_size);
-            let mut offsets = Vec::with_capacity(inputs.len() + 1);
+            let mut input_offsets = Vec::with_capacity(inputs.len() + 1);
 
             let mut current_offset = 0;
-            offsets.push(current_offset as u64);
+            input_offsets.push(current_offset as u64);
             for input in inputs {
                 flat_input.extend_from_slice(input);
                 current_offset += input.len();
-                offsets.push(current_offset as u64);
+                input_offsets.push(current_offset as u64);
             }
 
-            // 2. Check GPU memory availability
-            // Ensure there is enough free memory on the device before allocation.
-            // Estimate memory needed: input + offsets + output + output_sizes
-            // Output bound: similar to input size (conservative estimate)
-            let output_bound =
-                crate::compress::Compressor::deflate_compress_bound(total_input_size);
-
-            // Note: Explicit memory check removed as CudaDevice::mem_get_info is not directly available/verified.
-            // Allocation will fail with OOM error if insufficient memory.
+            // 2. Calculate output offsets
+            let mut output_offsets = Vec::with_capacity(inputs.len());
+            let mut current_out_offset = 0;
+            for input in inputs {
+                output_offsets.push(current_out_offset as u64);
+                let bound = crate::compress::Compressor::deflate_compress_bound(input.len());
+                current_out_offset += bound;
+            }
+            let total_output_bound = current_out_offset;
 
             // 3. Transfer data to GPU
-            // Use htod_copy (Host to Device) to allocate and copy data.
-            // Using pinned memory for host buffers (if supported/implemented) would be faster,
-            // but standard Vec is used here for simplicity.
-            // htod_copy consumes the vector.
-            let _dev_input = self.device.htod_copy(flat_input)?;
-            let _dev_offsets = self.device.htod_copy(offsets)?;
+            let dev_input = self.device.htod_copy(flat_input)?;
+            let dev_input_offsets = self.device.htod_copy(input_offsets)?;
+            let dev_output_offsets = self.device.htod_copy(output_offsets.clone())?;
 
             // 4. Allocate output buffers on GPU
-            // Allocate a single large output buffer to store compressed data for all streams.
-            // Also allocate an array to store the size of each compressed stream.
-            // cudarc's alloc is safe and handles cleanup on drop.
-            // Using alloc instead of alloc_zeros for performance since kernel will overwrite.
-            let mut _dev_output = unsafe { self.device.alloc::<u8>(output_bound)? };
-            let mut _dev_out_sizes = self.device.alloc_zeros::<u64>(inputs.len())?;
+            let mut dev_output = unsafe { self.device.alloc::<u8>(total_output_bound)? };
+            let mut dev_output_sizes = self.device.alloc_zeros::<u64>(inputs.len())?;
 
-            // 5. Launch Kernel (Placeholder)
-            // Ideally, we would load a PTX module and launch a kernel here.
-            // For now, return an error to trigger CPU fallback.
+            // 5. Launch Kernel
+            let launch_config = LaunchConfig {
+                grid_dim: (inputs.len() as u32, 1, 1),
+                block_dim: (1, 1, 1),
+                shared_mem_bytes: 0,
+            };
 
-            Err("CUDA compression kernel not implemented yet".into())
+            let kernel = self.device.get_func("compress", "compress_kernel")
+                .ok_or("Kernel not found")?;
+
+            unsafe { kernel.launch(
+                launch_config,
+                (
+                    &dev_input,
+                    &dev_input_offsets,
+                    &mut dev_output,
+                    &dev_output_offsets,
+                    &mut dev_output_sizes,
+                    inputs.len() as i32
+                )
+            ) }?;
+
+            // 6. Retrieve results
+            let output_sizes = self.device.dtoh_sync_copy(&dev_output_sizes)?;
+
+            let mut results = Vec::with_capacity(inputs.len());
+            for (i, &size) in output_sizes.iter().enumerate() {
+                let offset = output_offsets[i] as usize;
+                let size = size as usize;
+
+                let slice = dev_output.slice(offset..offset+size);
+                let host_data = self.device.dtoh_sync_copy(&slice)?;
+                results.push(host_data);
+            }
+
+            Ok(results)
         }
         #[cfg(not(feature = "cuda"))]
         {
