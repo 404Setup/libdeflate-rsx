@@ -1124,7 +1124,11 @@ impl Compressor {
                 }
             }
             if seq.length >= 3 {
-                if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
+                if bs.out_idx + 16 < bs.output.len() {
+                    unsafe {
+                        self.write_match_fast(bs, seq.length as usize, seq.offset as usize);
+                    }
+                } else if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
                     return false;
                 }
                 in_pos += seq.length as usize;
@@ -1309,7 +1313,11 @@ impl Compressor {
                 in_pos += 1;
             }
             if seq.length >= 3 {
-                if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
+                if bs.out_idx + 16 < bs.output.len() {
+                    unsafe {
+                        self.write_match_fast(bs, seq.length as usize, seq.offset as usize);
+                    }
+                } else if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
                     return 0;
                 }
                 in_pos += seq.length as usize;
@@ -1691,6 +1699,33 @@ impl Compressor {
         let entry = unsafe { *self.litlen_table.get_unchecked(sym) };
         unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) }
     }
+
+    #[inline(always)]
+    unsafe fn write_match_fast(&self, bs: &mut Bitstream, len: usize, offset: usize) {
+        let entry = *self.match_len_table.get_unchecked(len);
+        let code = entry as u16 as u32;
+        let huff_len = (entry >> 16) as u8 as u32;
+        let extra_bits = (entry >> 24) as u8 as u32;
+        let base = (entry >> 32) as u16 as u32;
+
+        let len_val = code | ((len as u32).wrapping_sub(base) << huff_len);
+        let len_len = huff_len + extra_bits;
+
+        bs.write_bits_unchecked_fast(len_val, len_len);
+
+        let off_slot = self.get_offset_slot(offset);
+        let entry = *self.offset_table.get_unchecked(off_slot);
+        let off_code = entry as u32;
+        let off_len = (entry >> 32) as u8 as u32;
+        let extra_bits = (entry >> 40) as u8 as u32;
+        let base = (entry >> 48) as u16 as u32;
+
+        let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
+        let off_len_total = off_len + extra_bits;
+
+        bs.write_bits_unchecked_fast(off_val, off_len_total);
+    }
+
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
         let entry = unsafe { *self.match_len_table.get_unchecked(len) };
         let code = entry as u16 as u32;

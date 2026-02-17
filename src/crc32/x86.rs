@@ -628,16 +628,10 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
     let mut x0 = _mm_cvtsi32_si128(crc as i32);
 
     if len >= 128 {
-        let mut v0 = _mm256_loadu_si256(data.as_ptr() as *const _);
-        let mut v1 = _mm256_loadu_si256(data.as_ptr().add(32) as *const _);
-        let mut v2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const _);
-        let mut v3 = _mm256_loadu_si256(data.as_ptr().add(96) as *const _);
-
-        let x0_256 = _mm256_set_m128i(_mm_setzero_si128(), x0);
-        v0 = _mm256_xor_si256(v0, x0_256);
-
-        data = &data[128..];
-        len -= 128;
+        let mut v0;
+        let mut v1;
+        let mut v2;
+        let mut v3;
 
         let mults_4v = _mm256_set_epi64x(
             CRC32_X991_MODG as i64,
@@ -646,8 +640,97 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
             CRC32_X1055_MODG as i64,
         );
 
+        if len >= 256 {
+            v0 = _mm256_loadu_si256(data.as_ptr() as *const _);
+            v1 = _mm256_loadu_si256(data.as_ptr().add(32) as *const _);
+            v2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const _);
+            v3 = _mm256_loadu_si256(data.as_ptr().add(96) as *const _);
+            let mut v4 = _mm256_loadu_si256(data.as_ptr().add(128) as *const _);
+            let mut v5 = _mm256_loadu_si256(data.as_ptr().add(160) as *const _);
+            let mut v6 = _mm256_loadu_si256(data.as_ptr().add(192) as *const _);
+            let mut v7 = _mm256_loadu_si256(data.as_ptr().add(224) as *const _);
+
+            let x0_256 = _mm256_set_m128i(_mm_setzero_si128(), x0);
+            v0 = _mm256_xor_si256(v0, x0_256);
+
+            data = &data[256..];
+            len -= 256;
+
+            let mults_8v = _mm256_set_epi64x(
+                CRC32_X2015_MODG as i64,
+                CRC32_X2079_MODG as i64,
+                CRC32_X2015_MODG as i64,
+                CRC32_X2079_MODG as i64,
+            );
+
+            while len >= 256 {
+                v0 = fold_vec256(
+                    v0,
+                    _mm256_loadu_si256(data.as_ptr() as *const _),
+                    mults_8v,
+                );
+                v1 = fold_vec256(
+                    v1,
+                    _mm256_loadu_si256(data.as_ptr().add(32) as *const _),
+                    mults_8v,
+                );
+                v2 = fold_vec256(
+                    v2,
+                    _mm256_loadu_si256(data.as_ptr().add(64) as *const _),
+                    mults_8v,
+                );
+                v3 = fold_vec256(
+                    v3,
+                    _mm256_loadu_si256(data.as_ptr().add(96) as *const _),
+                    mults_8v,
+                );
+                v4 = fold_vec256(
+                    v4,
+                    _mm256_loadu_si256(data.as_ptr().add(128) as *const _),
+                    mults_8v,
+                );
+                v5 = fold_vec256(
+                    v5,
+                    _mm256_loadu_si256(data.as_ptr().add(160) as *const _),
+                    mults_8v,
+                );
+                v6 = fold_vec256(
+                    v6,
+                    _mm256_loadu_si256(data.as_ptr().add(192) as *const _),
+                    mults_8v,
+                );
+                v7 = fold_vec256(
+                    v7,
+                    _mm256_loadu_si256(data.as_ptr().add(224) as *const _),
+                    mults_8v,
+                );
+                data = &data[256..];
+                len -= 256;
+            }
+
+            v0 = fold_vec256(v0, v4, mults_4v);
+            v1 = fold_vec256(v1, v5, mults_4v);
+            v2 = fold_vec256(v2, v6, mults_4v);
+            v3 = fold_vec256(v3, v7, mults_4v);
+        } else {
+            v0 = _mm256_loadu_si256(data.as_ptr() as *const _);
+            v1 = _mm256_loadu_si256(data.as_ptr().add(32) as *const _);
+            v2 = _mm256_loadu_si256(data.as_ptr().add(64) as *const _);
+            v3 = _mm256_loadu_si256(data.as_ptr().add(96) as *const _);
+
+            let x0_256 = _mm256_set_m128i(_mm_setzero_si128(), x0);
+            v0 = _mm256_xor_si256(v0, x0_256);
+
+            data = &data[128..];
+            len -= 128;
+        }
+
         while len >= 128 {
-            v0 = fold_vec256(v0, _mm256_loadu_si256(data.as_ptr() as *const _), mults_4v);
+            v0 = fold_vec256(
+                v0,
+                _mm256_loadu_si256(data.as_ptr() as *const _),
+                mults_4v,
+            );
             v1 = fold_vec256(
                 v1,
                 _mm256_loadu_si256(data.as_ptr().add(32) as *const _),
