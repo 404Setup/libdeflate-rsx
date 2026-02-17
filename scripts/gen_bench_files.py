@@ -66,6 +66,9 @@ def main():
     generate_offset26("bench_data/data_offset26.bin", 1024 * 1024)
     generate_offset27("bench_data/data_offset27.bin", 1024 * 1024)
     generate_offset28("bench_data/data_offset28.bin", 1024 * 1024)
+    generate_offset29("bench_data/data_offset29.bin", 1024 * 1024)
+    generate_offset30("bench_data/data_offset30.bin", 1024 * 1024)
+    generate_offset31("bench_data/data_offset31.bin", 1024 * 1024)
 
     # Small match variants
     # For offset N, we want matches of length N (or close to N).
@@ -236,6 +239,24 @@ def generate_offset28(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     # 28 unique bytes to avoid inner matches
     pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01"
+    write_pattern(filename, target_size, pattern)
+
+def generate_offset29(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    # 29 unique bytes to avoid inner matches
+    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012"
+    write_pattern(filename, target_size, pattern)
+
+def generate_offset30(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    # 30 unique bytes to avoid inner matches
+    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"
+    write_pattern(filename, target_size, pattern)
+
+def generate_offset31(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    # 31 unique bytes to avoid inner matches
+    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
     write_pattern(filename, target_size, pattern)
 
 if __name__ == "__main__":
