@@ -390,6 +390,74 @@ pub unsafe fn decompress_bmi2(
                                                     length - copied,
                                                 );
                                             }
+                                        } else if offset == 40 {
+                                            let mut copied = 16;
+                                            if length >= 40 {
+                                                let v_part2 = _mm_loadu_si128(src.add(16) as *const __m128i);
+                                                let v_part3 = _mm_loadu_si128(src.add(24) as *const __m128i);
+                                                _mm_storeu_si128(
+                                                    out_next.add(16) as *mut __m128i,
+                                                    v_part2,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(24) as *mut __m128i,
+                                                    v_part3,
+                                                );
+
+                                                let v0 = v;
+                                                let v1 = v_part2;
+                                                let v4 = v_part3;
+
+                                                let v2 = _mm_alignr_epi8(v0, v4, 8);
+                                                let v3 = _mm_alignr_epi8(v1, v0, 8);
+
+                                                copied = 40;
+                                                while copied + 80 <= length {
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied) as *mut __m128i,
+                                                        v0,
+                                                    );
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied + 16) as *mut __m128i,
+                                                        v1,
+                                                    );
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied + 32) as *mut __m128i,
+                                                        v2,
+                                                    );
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied + 48) as *mut __m128i,
+                                                        v3,
+                                                    );
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied + 64) as *mut __m128i,
+                                                        v4,
+                                                    );
+                                                    copied += 80;
+                                                }
+                                                while copied + 16 <= length {
+                                                    let idx = ((copied - 40) % 80) / 16;
+                                                    let v_tail = match idx {
+                                                        0 => v0,
+                                                        1 => v1,
+                                                        2 => v2,
+                                                        3 => v3,
+                                                        _ => v4,
+                                                    };
+                                                    _mm_storeu_si128(
+                                                        out_next.add(copied) as *mut __m128i,
+                                                        v_tail,
+                                                    );
+                                                    copied += 16;
+                                                }
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else if offset == 27 {
                                             let mut copied = 16;
                                             let mut v_align =
