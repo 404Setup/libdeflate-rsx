@@ -6,6 +6,46 @@ use core::arch::x86_64::*;
 const DIVISOR: u32 = 65521;
 const BLOCK_SIZE: usize = 5504;
 
+// Optimization: Manual loop unrolling for Adler32 tail processing.
+// This processes 4 bytes per iteration to reduce loop overhead and improve instruction pipelining.
+// It is significantly faster than a scalar iterator loop for small tails (e.g., 15-63 bytes).
+//
+// Safety:
+// * `$ptr` must be valid for reads of `$len` bytes.
+// * `$s1` and `$s2` must not overflow u32 before modulo (guaranteed by BLOCK_SIZE check in caller).
+macro_rules! adler32_tail {
+    ($s1:expr, $s2:expr, $ptr:expr, $len:expr) => {
+        if $len > 0 {
+            // Unroll loop to process 4 bytes at a time
+            while $len >= 4 {
+                let b0 = *$ptr as u32;
+                let b1 = *$ptr.add(1) as u32;
+                let b2 = *$ptr.add(2) as u32;
+                let b3 = *$ptr.add(3) as u32;
+
+                $s1 += b0;
+                $s2 += $s1;
+                $s1 += b1;
+                $s2 += $s1;
+                $s1 += b2;
+                $s2 += $s1;
+                $s1 += b3;
+                $s2 += $s1;
+
+                $ptr = $ptr.add(4);
+                $len -= 4;
+            }
+            while $len > 0 {
+                let b = *$ptr as u32;
+                $s1 += b;
+                $s2 += $s1;
+                $ptr = $ptr.add(1);
+                $len -= 1;
+            }
+        }
+    };
+}
+
 #[target_feature(enable = "sse2")]
 pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
     let mut s1 = adler & 0xFFFF;
@@ -203,10 +243,9 @@ pub unsafe fn adler32_x86_sse2(adler: u32, p: &[u8]) -> u32 {
         data = &data[16..];
     }
 
-    for &b in data {
-        s1 += b as u32;
-        s2 += s1;
-    }
+    let mut ptr = data.as_ptr();
+    let mut len = data.len();
+    adler32_tail!(s1, s2, ptr, len);
 
     (s2 % DIVISOR) << 16 | (s1 % DIVISOR)
 }
@@ -522,11 +561,7 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         len -= 16;
     }
 
-    let remaining = core::slice::from_raw_parts(ptr, len);
-    for &b in remaining {
-        s1 += b as u32;
-        s2 += s1;
-    }
+    adler32_tail!(s1, s2, ptr, len);
     s1 %= DIVISOR;
     s2 %= DIVISOR;
 
@@ -783,10 +818,9 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
         s1 = res & 0xFFFF;
         s2 = res >> 16;
     } else {
-        for &b in data {
-            s1 += b as u32;
-            s2 += s1;
-        }
+        let mut ptr = data.as_ptr();
+        let mut len = data.len();
+        adler32_tail!(s1, s2, ptr, len);
         s1 %= DIVISOR;
         s2 %= DIVISOR;
     }
