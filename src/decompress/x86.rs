@@ -365,6 +365,28 @@ pub unsafe fn decompress_bmi2(
                                                     length - copied,
                                                 );
                                             }
+                                        } else if offset == 28 {
+                                            let mut copied = 16;
+                                            let mut v_align =
+                                                _mm_loadu_si128(src.add(12) as *const __m128i);
+                                            let mut v_prev = v;
+                                            while copied + 16 <= length {
+                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 4);
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v_next,
+                                                );
+                                                v_align = v_prev;
+                                                v_prev = v_next;
+                                                copied += 16;
+                                            }
+                                            if copied < length {
+                                                std::ptr::copy_nonoverlapping(
+                                                    src.add(copied),
+                                                    out_next.add(copied),
+                                                    length - copied,
+                                                );
+                                            }
                                         } else if offset == 26 {
                                             let mut copied = 16;
                                             let mut v_align =
