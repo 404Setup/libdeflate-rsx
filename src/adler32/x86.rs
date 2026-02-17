@@ -814,16 +814,33 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
     }
 
     if data.len() >= 16 {
-        let res = adler32_x86_sse2((s2 << 16) | s1, data);
-        s1 = res & 0xFFFF;
-        s2 = res >> 16;
-    } else {
-        let mut ptr = data.as_ptr();
-        let mut len = data.len();
-        adler32_tail!(s1, s2, ptr, len);
-        s1 %= DIVISOR;
-        s2 %= DIVISOR;
+        let d = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v_zero_xmm = _mm_setzero_si128();
+
+        let sad = _mm_sad_epu8(d, v_zero_xmm);
+        let s1_part = _mm_cvtsi128_si32(_mm_add_epi32(sad, _mm_unpackhi_epi64(sad, sad))) as u32;
+
+        s2 += s1 * 16;
+        s1 += s1_part;
+
+        let w_16 = _mm_set_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+        let p = _mm_maddubs_epi16(d, w_16);
+        let s = _mm_madd_epi16(p, _mm_set1_epi16(1));
+
+        let s_sum = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0x4E));
+        let s_sum = _mm_add_epi32(s_sum, _mm_shuffle_epi32(s_sum, 0xB1));
+
+        s2 += _mm_cvtsi128_si32(s_sum) as u32;
+
+        let processed = 16;
+        data = &data[processed..];
     }
+
+    let mut ptr = data.as_ptr();
+    let mut len = data.len();
+    adler32_tail!(s1, s2, ptr, len);
+    s1 %= DIVISOR;
+    s2 %= DIVISOR;
 
     (s2 << 16) | s1
 }
