@@ -1109,8 +1109,15 @@ impl Compressor {
         let mut in_pos = start_pos;
         for seq in &self.sequences {
             if seq.litrunlen > 0 {
+                // Check if we have enough space to write all literals in this run without bounds checks.
+                // Heuristic: Each literal expands to at most 15 bits. Writing flushes every 32 bits (4 bytes).
+                // Max expansion is roughly 15/8 ~= 1.875 bytes per literal. 2 bytes is a safe upper bound.
+                // We add 16 bytes margin for the last flush (8 bytes) and safety.
                 if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
                     for _ in 0..seq.litrunlen {
+                        // SAFETY: We verified sufficient buffer space above.
+                        // `write_literal_fast` writes at most 15 bits and may flush 4 bytes.
+                        // The buffer margin guarantees `out_idx + 8 <= output.len()` for the `write_bits_unchecked_fast` call.
                         unsafe { self.write_literal_fast(bs, input[in_pos]) };
                         in_pos += 1;
                     }
@@ -1306,11 +1313,20 @@ impl Compressor {
 
         let mut in_pos = start_pos;
         for seq in &self.sequences {
-            for _ in 0..seq.litrunlen {
-                if !self.write_literal(bs, input[in_pos]) {
-                    return 0;
+            if seq.litrunlen > 0 {
+                if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
+                    for _ in 0..seq.litrunlen {
+                        unsafe { self.write_literal_fast(bs, input[in_pos]) };
+                        in_pos += 1;
+                    }
+                } else {
+                    for _ in 0..seq.litrunlen {
+                        if !self.write_literal(bs, input[in_pos]) {
+                            return 0;
+                        }
+                        in_pos += 1;
+                    }
                 }
-                in_pos += 1;
             }
             if seq.length >= 3 {
                 if bs.out_idx + 16 < bs.output.len() {
