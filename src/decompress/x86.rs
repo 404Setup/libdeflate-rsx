@@ -812,77 +812,26 @@ pub unsafe fn decompress_bmi2(
                                                 );
                                             }
                                         } else {
-                                            let mut copied = 16;
-                                            // Optimization: Use 128-bit SIMD load/store loop for bulk copy.
-                                            // This is safe because `offset >= 16` (guarded by outer `if`), meaning the
-                                            // source and destination windows separated by `offset` do not overlap
-                                            // destructively within a 16-byte chunk.
-                                            // Reads from `src + copied` (which is `dst + copied - offset`)
-                                            // are valid because we are at least 16 bytes into the match, and `offset >= 16`.
-                                            while copied + 64 <= length {
-                                                let v1 = _mm_loadu_si128(
-                                                    src.add(copied) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied) as *mut __m128i,
-                                                    v1,
-                                                );
-                                                let v2 = _mm_loadu_si128(
-                                                    src.add(copied + 16) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied + 16) as *mut __m128i,
-                                                    v2,
-                                                );
-                                                let v3 = _mm_loadu_si128(
-                                                    src.add(copied + 32) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied + 32) as *mut __m128i,
-                                                    v3,
-                                                );
-                                                let v4 = _mm_loadu_si128(
-                                                    src.add(copied + 48) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied + 48) as *mut __m128i,
-                                                    v4,
-                                                );
-                                                copied += 64;
-                                            }
-                                            while copied + 32 <= length {
-                                                let v1 = _mm_loadu_si128(
-                                                    src.add(copied) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied) as *mut __m128i,
-                                                    v1,
-                                                );
-                                                let v2 = _mm_loadu_si128(
-                                                    src.add(copied + 16) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied + 16) as *mut __m128i,
-                                                    v2,
-                                                );
-                                                copied += 32;
-                                            }
-                                            while copied + 16 <= length {
-                                                let v = _mm_loadu_si128(
-                                                    src.add(copied) as *const __m128i
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(copied) as *mut __m128i,
-                                                    v,
-                                                );
-                                                copied += 16;
-                                            }
-                                            if copied < length {
+                                            // Optimization: Use exponential doubling for pattern replication.
+                                            // First, copy 'offset' bytes to establish the pattern in the destination buffer.
+                                            // Since offset >= 16 (guarded by outer if), src (dest-offset) and dest do not
+                                            // overlap in the first 16 bytes. Furthermore, since we copy exactly 'offset'
+                                            // bytes, the source range [dest-offset, dest) and destination range
+                                            // [dest, dest+offset) do not overlap.
+                                            // Note: Control flow ensures offset < length here (due to else if offset >= length),
+                                            // but we use min(offset, length) for robustness.
+                                            let init = std::cmp::min(offset, length);
+                                            std::ptr::copy_nonoverlapping(src, out_next, init);
+
+                                            let mut copied = init;
+                                            while copied < length {
+                                                let to_copy = std::cmp::min(length - copied, copied);
                                                 std::ptr::copy_nonoverlapping(
-                                                    src.add(copied),
+                                                    out_next,
                                                     out_next.add(copied),
-                                                    length - copied,
+                                                    to_copy,
                                                 );
+                                                copied += to_copy;
                                             }
                                         }
                                     }
