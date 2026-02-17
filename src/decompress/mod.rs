@@ -1432,14 +1432,21 @@ impl Decompressor {
                             }
                         } else {
                             let mut copied = 0;
+                            if length >= 8 {
+                                let mut pattern = prepare_pattern(offset, src_ptr);
+                                let shift = (8 % offset) as u32 * 8;
+                                while copied + 8 <= length {
+                                    std::ptr::write_unaligned(
+                                        dest_ptr.add(copied) as *mut u64,
+                                        pattern,
+                                    );
+                                    pattern = pattern.rotate_right(shift);
+                                    copied += 8;
+                                }
+                            }
                             while copied < length {
-                                let copy_len = std::cmp::min(offset, length - copied);
-                                std::ptr::copy_nonoverlapping(
-                                    src_ptr.add(copied),
-                                    dest_ptr.add(copied),
-                                    copy_len,
-                                );
-                                copied += copy_len;
+                                *dest_ptr.add(copied) = *src_ptr.add(copied);
+                                copied += 1;
                             }
                         }
                     } else {
@@ -1622,22 +1629,36 @@ pub(crate) unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
                 w | (w << 16) | (w << 32) | (w << 48)
             }
             3 => {
-                let b0 = *src_ptr as u64;
-                let b1 = *src_ptr.add(1) as u64;
-                let b2 = *src_ptr.add(2) as u64;
-                let p_le = b0
-                    | (b1 << 8)
-                    | (b2 << 16)
-                    | (b0 << 24)
-                    | (b1 << 32)
-                    | (b2 << 40)
-                    | (b0 << 48)
-                    | (b1 << 56);
+                // Optimization: Read 4 bytes, mask to 3 bytes, then replicate the pattern.
+                // This reduces memory accesses compared to byte-wise reads.
+                // Safe because caller guards availability.
+                // Masking avoids using the potentially uninitialized 4th byte.
+                let val = (src_ptr as *const u32).read_unaligned();
+                let p = (val.to_le() & 0xFFFFFF) as u64;
+                let p_le = p | (p << 24) | (p << 48);
                 u64::from_le(p_le)
             }
             4 => {
                 let w = std::ptr::read_unaligned(src_ptr as *const u32) as u64;
                 w | (w << 32)
+            }
+            5 => {
+                let val = (src_ptr as *const u64).read_unaligned();
+                let p = val.to_le() & 0xFFFFFFFFFF;
+                let p_le = p | (p << 40);
+                u64::from_le(p_le)
+            }
+            6 => {
+                let val = (src_ptr as *const u64).read_unaligned();
+                let p = val.to_le() & 0xFFFFFFFFFFFF;
+                let p_le = p | (p << 48);
+                u64::from_le(p_le)
+            }
+            7 => {
+                let val = (src_ptr as *const u64).read_unaligned();
+                let p = val.to_le() & 0xFFFFFFFFFFFFFF;
+                let p_le = p | (p << 56);
+                u64::from_le(p_le)
             }
             _ => {
                 let mut p_le = 0u64;
