@@ -65,6 +65,15 @@ pub struct Decompressor {
     pub is_final_block: bool,
 }
 
+struct StaticHuffmanData {
+    offset_decode_table: [u32; OFFSET_ENOUGH],
+    litlen_decode_table: [u32; LITLEN_ENOUGH],
+    lens: [u8; DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + DEFLATE_MAX_LENS_OVERRUN],
+    litlen_tablebits: usize,
+}
+
+static STATIC_HUFFMAN_DATA: std::sync::OnceLock<StaticHuffmanData> = std::sync::OnceLock::new();
+
 #[derive(Debug, PartialEq, Eq)]
 #[must_use = "Decompression result must be checked for errors"]
 pub enum DecompressResult {
@@ -296,29 +305,47 @@ impl Decompressor {
         if self.static_codes_loaded {
             return;
         }
-        let mut i = 0;
-        while i < 144 {
-            self.lens[i] = 8;
-            i += 1;
-        }
-        while i < 256 {
-            self.lens[i] = 9;
-            i += 1;
-        }
-        while i < 280 {
-            self.lens[i] = 7;
-            i += 1;
-        }
-        while i < 288 {
-            self.lens[i] = 8;
-            i += 1;
-        }
-        while i < 288 + 32 {
-            self.lens[i] = 5;
-            i += 1;
-        }
-        self.build_offset_decode_table(288, 32);
-        self.build_litlen_decode_table(288);
+
+        let data = STATIC_HUFFMAN_DATA.get_or_init(|| {
+            let mut d = Decompressor::new();
+            let mut i = 0;
+            while i < 144 {
+                d.lens[i] = 8;
+                i += 1;
+            }
+            while i < 256 {
+                d.lens[i] = 9;
+                i += 1;
+            }
+            while i < 280 {
+                d.lens[i] = 7;
+                i += 1;
+            }
+            while i < 288 {
+                d.lens[i] = 8;
+                i += 1;
+            }
+            while i < 288 + 32 {
+                d.lens[i] = 5;
+                i += 1;
+            }
+            d.build_offset_decode_table(288, 32);
+            d.build_litlen_decode_table(288);
+
+            StaticHuffmanData {
+                offset_decode_table: d.offset_decode_table,
+                litlen_decode_table: d.litlen_decode_table,
+                lens: d.lens,
+                litlen_tablebits: d.litlen_tablebits,
+            }
+        });
+
+        self.offset_decode_table
+            .copy_from_slice(&data.offset_decode_table);
+        self.litlen_decode_table
+            .copy_from_slice(&data.litlen_decode_table);
+        self.lens.copy_from_slice(&data.lens);
+        self.litlen_tablebits = data.litlen_tablebits;
         self.static_codes_loaded = true;
     }
 
