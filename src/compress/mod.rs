@@ -100,6 +100,27 @@ struct Sequence {
     offset: u16,
 }
 
+impl Sequence {
+    #[inline(always)]
+    fn new(litrunlen: u32, len: u16, offset: u16, off_slot: u8) -> Self {
+        Self {
+            litrunlen,
+            length: len | ((off_slot as u16) << 9),
+            offset,
+        }
+    }
+
+    #[inline(always)]
+    fn len(&self) -> u16 {
+        self.length & 0x1FF
+    }
+
+    #[inline(always)]
+    fn off_slot(&self) -> usize {
+        (self.length >> 9) as usize
+    }
+}
+
 #[derive(Clone, Copy)]
 struct DPNode {
     cost: u32,
@@ -1067,14 +1088,16 @@ impl Compressor {
                     }
                 }
 
-                self.sequences.push(Sequence {
+                let off_slot = self.get_offset_slot(offset);
+                self.sequences.push(Sequence::new(
                     litrunlen,
-                    length: len as u16,
-                    offset: offset as u16,
-                });
+                    len as u16,
+                    offset as u16,
+                    off_slot as u8,
+                ));
                 self.split_stats.observe_match(len, offset);
                 self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
-                self.offset_freqs[self.get_offset_slot(offset)] += 1;
+                self.offset_freqs[off_slot] += 1;
                 litrunlen = 0;
                 if len - 1 > skipped {
                     mf.skip_positions(
@@ -1092,11 +1115,7 @@ impl Compressor {
                 in_idx += 1;
             }
         }
-        self.sequences.push(Sequence {
-            litrunlen,
-            length: 0,
-            offset: 0,
-        });
+        self.sequences.push(Sequence::new(litrunlen, 0, 0, 0));
         self.litlen_freqs[256] += 1;
         in_idx - start_pos
     }
@@ -1149,15 +1168,18 @@ impl Compressor {
                     }
                 }
             }
-            if seq.length >= 3 {
+            let len = seq.len();
+            if len >= 3 {
+                let offset = seq.offset as usize;
+                let off_slot = seq.off_slot();
                 if bs.out_idx + 16 < bs.output.len() {
                     unsafe {
-                        self.write_match_fast(bs, seq.length as usize, seq.offset as usize);
+                        self.write_match_fast(bs, len as usize, offset, off_slot);
                     }
-                } else if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
+                } else if !self.write_match(bs, len as usize, offset, off_slot) {
                     return false;
                 }
-                in_pos += seq.length as usize;
+                in_pos += len as usize;
             }
         }
         if !self.write_sym(bs, 256) {
@@ -1275,11 +1297,12 @@ impl Compressor {
             while in_idx < input.len() {
                 let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
                 if len >= 3 {
-                    self.sequences.push(Sequence {
+                    self.sequences.push(Sequence::new(
                         litrunlen,
-                        length: len as u16,
-                        offset: offset as u16,
-                    });
+                        len as u16,
+                        offset as u16,
+                        self.get_offset_slot(offset) as u8,
+                    ));
                     litrunlen = 0;
                     mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
                     in_idx += len;
@@ -1300,11 +1323,12 @@ impl Compressor {
                 let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
                 if len >= 3 {
                     self.split_stats.observe_match(len, offset);
-                    self.sequences.push(Sequence {
+                    self.sequences.push(Sequence::new(
                         litrunlen,
-                        length: len as u16,
-                        offset: offset as u16,
-                    });
+                        len as u16,
+                        offset as u16,
+                        self.get_offset_slot(offset) as u8,
+                    ));
                     litrunlen = 0;
                     mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
                     in_idx += len;
@@ -1315,11 +1339,7 @@ impl Compressor {
                 }
             }
         }
-        self.sequences.push(Sequence {
-            litrunlen,
-            length: 0,
-            offset: 0,
-        });
+        self.sequences.push(Sequence::new(litrunlen, 0, 0, 0));
 
         let processed = in_idx - start_pos;
         let is_final = (start_pos + processed >= input.len()) && final_block;
@@ -1353,15 +1373,18 @@ impl Compressor {
                     }
                 }
             }
-            if seq.length >= 3 {
+            let len = seq.len();
+            if len >= 3 {
+                let offset = seq.offset as usize;
+                let off_slot = seq.off_slot();
                 if bs.out_idx + 16 < bs.output.len() {
                     unsafe {
-                        self.write_match_fast(bs, seq.length as usize, seq.offset as usize);
+                        self.write_match_fast(bs, len as usize, offset, off_slot);
                     }
-                } else if !self.write_match(bs, seq.length as usize, seq.offset as usize) {
+                } else if !self.write_match(bs, len as usize, offset, off_slot) {
                     return 0;
                 }
-                in_pos += seq.length as usize;
+                in_pos += len as usize;
             }
         }
         if !self.write_sym(bs, 256) {
@@ -1415,13 +1438,15 @@ impl Compressor {
         while cur_in_idx < block_input.len() {
             let (len, offset) = mf.find_match(block_input, cur_in_idx, self.max_search_depth);
             if len >= 3 {
-                self.sequences.push(Sequence {
+                let off_slot = self.get_offset_slot(offset);
+                self.sequences.push(Sequence::new(
                     litrunlen,
-                    length: len as u16,
-                    offset: offset as u16,
-                });
+                    len as u16,
+                    offset as u16,
+                    off_slot as u8,
+                ));
                 self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
-                self.offset_freqs[self.get_offset_slot(offset)] += 1;
+                self.offset_freqs[off_slot] += 1;
                 litrunlen = 0;
                 cur_in_idx += len;
                 for i in 1..len {
@@ -1519,22 +1544,20 @@ impl Compressor {
                 litrunlen += 1;
                 cur_pos += 1;
             } else {
-                self.sequences.push(Sequence {
+                let off_slot = self.get_offset_slot(node.offset as usize);
+                self.sequences.push(Sequence::new(
                     litrunlen,
-                    length: node.length,
-                    offset: node.offset,
-                });
+                    node.length,
+                    node.offset,
+                    off_slot as u8,
+                ));
                 self.litlen_freqs[257 + self.get_length_slot(node.length as usize)] += 1;
-                self.offset_freqs[self.get_offset_slot(node.offset as usize)] += 1;
+                self.offset_freqs[off_slot] += 1;
                 litrunlen = 0;
                 cur_pos += node.length as usize;
             }
         }
-        self.sequences.push(Sequence {
-            litrunlen,
-            length: 0,
-            offset: 0,
-        });
+        self.sequences.push(Sequence::new(litrunlen, 0, 0, 0));
 
         make_huffman_code(
             DEFLATE_NUM_LITLEN_SYMS,
@@ -1756,7 +1779,7 @@ impl Compressor {
     }
 
     #[inline(always)]
-    unsafe fn write_match_fast(&self, bs: &mut Bitstream, len: usize, offset: usize) {
+    unsafe fn write_match_fast(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) {
         let entry = *self.match_len_table.get_unchecked(len);
         let code = entry as u16 as u32;
         let huff_len = (entry >> 16) as u8 as u32;
@@ -1768,7 +1791,6 @@ impl Compressor {
 
         bs.write_bits_unchecked_fast(len_val, len_len);
 
-        let off_slot = self.get_offset_slot(offset);
         let entry = *self.offset_table.get_unchecked(off_slot);
         let off_code = entry as u32;
         let off_len = (entry >> 32) as u8 as u32;
@@ -1781,7 +1803,7 @@ impl Compressor {
         bs.write_bits_unchecked_fast(off_val, off_len_total);
     }
 
-    fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize) -> bool {
+    fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) -> bool {
         let entry = unsafe { *self.match_len_table.get_unchecked(len) };
         let code = entry as u16 as u32;
         let huff_len = (entry >> 16) as u8 as u32;
@@ -1795,7 +1817,6 @@ impl Compressor {
             return false;
         }
 
-        let off_slot = self.get_offset_slot(offset);
         let entry = unsafe { *self.offset_table.get_unchecked(off_slot) };
         let off_code = entry as u32;
         let off_len = (entry >> 32) as u8 as u32;
