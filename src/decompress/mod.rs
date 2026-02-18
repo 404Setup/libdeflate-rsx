@@ -467,7 +467,7 @@ impl Decompressor {
         DecompressResult::Success
     }
 
-    fn decompress_huffman_block(
+    pub(crate) fn decompress_huffman_block(
         &mut self,
         input: &[u8],
         in_idx: &mut usize,

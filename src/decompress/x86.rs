@@ -267,6 +267,7 @@ pub unsafe fn decompress_bmi2(
                 }
 
                 loop {
+                    let mut eob_found = false;
                     unsafe {
                         let in_ptr_start = input.as_ptr();
                         let in_ptr_end = in_ptr_start.add(in_len);
@@ -292,6 +293,7 @@ pub unsafe fn decompress_bmi2(
                                 if entry & HUFFDEC_END_OF_BLOCK != 0 {
                                     bitbuf >>= entry as u8;
                                     bitsleft -= entry & 0xFF;
+                                    eob_found = true;
                                     break;
                                 }
                                 if entry & HUFFDEC_SUBTABLE_POINTER != 0 {
@@ -323,6 +325,9 @@ pub unsafe fn decompress_bmi2(
 
                             let saved_bitbuf = bitbuf;
                             let total_bits = entry & 0xFF;
+                            if bitsleft < total_bits {
+                                break;
+                            }
                             bitbuf >>= total_bits;
                             bitsleft -= total_bits;
 
@@ -1733,10 +1738,30 @@ pub unsafe fn decompress_bmi2(
                                         copied += 1;
                                     }
                                 }
-                                out_idx += length;
+                                out_next = out_next.add(length);
                             }
                         }
+                        in_idx = in_next.offset_from(in_ptr_start) as usize;
+                        out_idx = out_next.offset_from(out_ptr_start) as usize;
                     }
+
+                    if eob_found {
+                        break;
+                    }
+
+                    d.bitbuf = bitbuf;
+                    d.bitsleft = bitsleft;
+                    d.state = crate::decompress::DecompressorState::BlockBody;
+
+                    let res = d.decompress_huffman_block(input, &mut in_idx, output, &mut out_idx);
+
+                    bitbuf = d.bitbuf;
+                    bitsleft = d.bitsleft;
+
+                    if res != DecompressResult::Success {
+                        return (res, in_idx, out_idx);
+                    }
+                    break;
                 }
             }
             _ => return (DecompressResult::BadData, 0, 0),
