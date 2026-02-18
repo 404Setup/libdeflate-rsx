@@ -23,3 +23,7 @@
 ## 2026-06-04 - [Adler32 AVX2 VNNI Optimization]
 **Learning:** Optimizing `adler32_x86_avx2_vnni` by unrolling to 256 bytes (8 accumulators) yielded a 44% throughput improvement for 256-byte inputs. However, holding intermediate `u` vectors for batch reduction caused register spilling (17+ registers needed).
 **Action:** To fit 8 accumulators within 16 AVX2 registers, interleave the reduction of temporary vectors (`u`) with the accumulation steps (`v_s2`), allowing registers to be freed earlier. Merging the global accumulator into a local one and generating `v_zero` on-the-fly also saved registers.
+
+## 2026-06-04 - [Vector Precomputation vs Alignr Chain]
+**Learning:** For overlapping patterns where offset is a multiple of 8 (e.g., offset 24), breaking the `alignr` dependency chain by precomputing all vectors in the cycle (LCM of offset and vector size) allowed for effective loop unrolling. This yielded a 32% throughput improvement (7.7 GiB/s -> 10.2 GiB/s) by increasing ILP compared to the serial dependency of iterative `alignr`.
+**Action:** When optimizing decompression loops for specific offsets, determine if the pattern cycle is short enough to precompute fully. If so, prefer storing precomputed vectors in an unrolled loop over calculating the next vector from the previous one.

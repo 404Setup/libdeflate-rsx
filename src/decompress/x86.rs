@@ -709,24 +709,47 @@ pub unsafe fn decompress_bmi2(
                                             let mut copied = 16;
                                             // src[16] is dest[-8]. We need dest[-8..-1] (8 bytes).
                                             // Avoid reading dest[0] by reading two u32s.
-                                            // v0 at dest[-8..-5], v1 at dest[-4..-1].
-                                            let v0 =
+                                            // v_part1 at dest[-8..-5], v_part2 at dest[-4..-1].
+                                            let v_part1 =
                                                 std::ptr::read_unaligned(src.add(16) as *const u32);
-                                            let v1 =
+                                            let v_part2 =
                                                 std::ptr::read_unaligned(src.add(20) as *const u32);
-                                            let val = (v0 as u64) | ((v1 as u64) << 32);
-                                            let v_temp = _mm_cvtsi64_si128(val as i64);
-                                            let mut v_align = _mm_slli_si128(v_temp, 8);
-                                            let mut v_prev = v;
+                                            let val = (v_part1 as u64) | ((v_part2 as u64) << 32);
+                                            let v_tail = _mm_cvtsi64_si128(val as i64);
 
+                                            let v0 = v;
+                                            // v1 = dest[16..32] = dest[-8..0] | dest[0..8] = v_tail | v0_low
+                                            let v1 = _mm_unpacklo_epi64(v_tail, v0);
+                                            // v2 = dest[32..48] = dest[8..16] | dest[16..24] = v0_high | v_tail
+                                            // alignr(v_tail, v0, 8) takes v0[8..16] and v_tail[0..8]
+                                            let v2 = _mm_alignr_epi8(v_tail, v0, 8);
+
+                                            while copied + 48 <= length {
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied) as *mut __m128i,
+                                                    v1,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied + 16) as *mut __m128i,
+                                                    v2,
+                                                );
+                                                _mm_storeu_si128(
+                                                    out_next.add(copied + 32) as *mut __m128i,
+                                                    v0,
+                                                );
+                                                copied += 48;
+                                            }
                                             while copied + 16 <= length {
-                                                let v_next = _mm_alignr_epi8(v_prev, v_align, 8);
+                                                let idx = (copied % 48) / 16;
+                                                let v_next = match idx {
+                                                    1 => v1,
+                                                    2 => v2,
+                                                    _ => v0,
+                                                };
                                                 _mm_storeu_si128(
                                                     out_next.add(copied) as *mut __m128i,
                                                     v_next,
                                                 );
-                                                v_align = v_prev;
-                                                v_prev = v_next;
                                                 copied += 16;
                                             }
                                             if copied < length {
