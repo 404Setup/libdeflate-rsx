@@ -40,9 +40,17 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         }
         len -= 4;
     }
-    let remaining = unsafe { std::slice::from_raw_parts(ptr, len) };
-    for &b in remaining {
+    if len > 0 {
+        let b = unsafe { *ptr };
         crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
+        if len > 1 {
+            let b = unsafe { *ptr.add(1) };
+            crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
+            if len > 2 {
+                let b = unsafe { *ptr.add(2) };
+                crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
+            }
+        }
     }
     crc
 }

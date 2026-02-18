@@ -1445,6 +1445,7 @@ criterion_group!(
     bench_decompress_offset30,
     bench_decompress_offset31,
     bench_decompress_offset32,
+    bench_crc32_slice8_tail,
 );
 criterion_main!(benches);
 
@@ -1630,6 +1631,26 @@ fn bench_decompress_offset40_micro(c: &mut Criterion) {
                 .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
                 .unwrap_or(0)
         });
+    });
+
+    group.finish();
+}
+
+fn bench_crc32_slice8_tail(c: &mut Criterion) {
+    let mut group = c.benchmark_group("CRC32 Slice8 Tail");
+
+    let size = 15; // 8 + 4 + 3
+    let data = vec![0u8; size];
+    group.throughput(Throughput::Bytes(size as u64));
+    group.bench_with_input("15 bytes", &size, |b, &_size| {
+        b.iter(|| crc32_slice8(0, &data));
+    });
+
+    let size = 3;
+    let data = vec![0u8; size];
+    group.throughput(Throughput::Bytes(size as u64));
+    group.bench_with_input("3 bytes", &size, |b, &_size| {
+        b.iter(|| crc32_slice8(0, &data));
     });
 
     group.finish();

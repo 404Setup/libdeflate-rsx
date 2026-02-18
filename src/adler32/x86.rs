@@ -1170,11 +1170,19 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
         let mask = (1u32 << len) - 1;
         let d = _mm256_maskz_loadu_epi8(mask, data.as_ptr() as *const i8);
 
-        let s1_part = hsum_epi32_avx256(_mm256_dpbusd_epi32(_mm256_setzero_si256(), d, _mm256_set1_epi8(1)));
-        let s2_part_raw = hsum_epi32_avx256(_mm256_dpbusd_epi32(_mm256_setzero_si256(), d, _mm256_set_epi8(
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-            25, 26, 27, 28, 29, 30, 31, 32,
-        )));
+        let s1_part = hsum_epi32_avx256(_mm256_dpbusd_epi32(
+            _mm256_setzero_si256(),
+            d,
+            _mm256_set1_epi8(1),
+        ));
+        let s2_part_raw = hsum_epi32_avx256(_mm256_dpbusd_epi32(
+            _mm256_setzero_si256(),
+            d,
+            _mm256_set_epi8(
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                24, 25, 26, 27, 28, 29, 30, 31, 32,
+            ),
+        ));
 
         let s2_part = s2_part_raw.wrapping_sub(((32 - len) as u32).wrapping_mul(s1_part));
         s2 = s2.wrapping_add(s1.wrapping_mul(len as u32));

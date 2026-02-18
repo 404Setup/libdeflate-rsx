@@ -393,8 +393,10 @@ pub unsafe fn decompress_bmi2(
                                         } else if offset == 40 {
                                             let mut copied = 16;
                                             if length >= 40 {
-                                                let v_part2 = _mm_loadu_si128(src.add(16) as *const __m128i);
-                                                let v_part3 = _mm_loadu_si128(src.add(24) as *const __m128i);
+                                                let v_part2 =
+                                                    _mm_loadu_si128(src.add(16) as *const __m128i);
+                                                let v_part3 =
+                                                    _mm_loadu_si128(src.add(24) as *const __m128i);
                                                 _mm_storeu_si128(
                                                     out_next.add(16) as *mut __m128i,
                                                     v_part2,
@@ -893,7 +895,8 @@ pub unsafe fn decompress_bmi2(
 
                                             let mut copied = init;
                                             while copied < length {
-                                                let to_copy = std::cmp::min(length - copied, copied);
+                                                let to_copy =
+                                                    std::cmp::min(length - copied, copied);
                                                 std::ptr::copy_nonoverlapping(
                                                     out_next,
                                                     out_next.add(copied),

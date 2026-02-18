@@ -93,20 +93,24 @@ impl CudaBatchCompressor {
                 shared_mem_bytes: 0,
             };
 
-            let kernel = self.device.get_func("compress", "compress_kernel")
+            let kernel = self
+                .device
+                .get_func("compress", "compress_kernel")
                 .ok_or("Kernel not found")?;
 
-            unsafe { kernel.launch(
-                launch_config,
-                (
-                    &dev_input,
-                    &dev_input_offsets,
-                    &mut dev_output,
-                    &dev_output_offsets,
-                    &mut dev_output_sizes,
-                    inputs.len() as i32
+            unsafe {
+                kernel.launch(
+                    launch_config,
+                    (
+                        &dev_input,
+                        &dev_input_offsets,
+                        &mut dev_output,
+                        &dev_output_offsets,
+                        &mut dev_output_sizes,
+                        inputs.len() as i32,
+                    ),
                 )
-            ) }?;
+            }?;
 
             // 6. Retrieve results
             let output_sizes = self.device.dtoh_sync_copy(&dev_output_sizes)?;
@@ -116,7 +120,7 @@ impl CudaBatchCompressor {
                 let offset = output_offsets[i] as usize;
                 let size = size as usize;
 
-                let slice = dev_output.slice(offset..offset+size);
+                let slice = dev_output.slice(offset..offset + size);
                 let host_data = self.device.dtoh_sync_copy(&slice)?;
                 results.push(host_data);
             }
