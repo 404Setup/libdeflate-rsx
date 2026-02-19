@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use libdeflate::batch;
 use libdeflate::compress::bitstream::Bitstream;
-use libdeflate::crc32::crc32_slice8;
+use libdeflate::crc32::{crc32_slice1, crc32_slice8};
 use libdeflate::stream;
 use libdeflate::{Compressor, Decompressor, adler32, crc32};
 use std::fs::File;
@@ -1504,6 +1504,7 @@ criterion_group!(
     bench_decompress_offset31,
     bench_decompress_offset32,
     bench_crc32_slice8_tail,
+    bench_crc32_small,
     bench_decompress_offset64_micro,
     bench_decompress_offset48_micro,
 );
@@ -1746,6 +1747,25 @@ fn bench_crc32_slice8_tail(c: &mut Criterion) {
         b.iter(|| crc32_slice8(0, std::hint::black_box(&data)));
     });
 
+    group.finish();
+}
+
+fn bench_crc32_small(c: &mut Criterion) {
+    let mut group = c.benchmark_group("CRC32 Small");
+    let sizes = [1, 2, 3, 4];
+
+    for size in sizes {
+        let data = vec![0u8; size];
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input(BenchmarkId::new("slice1", size), &size, |b, &_size| {
+            b.iter(|| crc32_slice1(0, std::hint::black_box(&data)));
+        });
+
+        group.bench_with_input(BenchmarkId::new("slice8", size), &size, |b, &_size| {
+            b.iter(|| crc32_slice8(0, std::hint::black_box(&data)));
+        });
+    }
     group.finish();
 }
 
