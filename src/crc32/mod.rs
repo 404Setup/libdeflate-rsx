@@ -62,6 +62,7 @@ mod x86;
 
 type Crc32Fn = unsafe fn(u32, &[u8]) -> u32;
 
+#[inline]
 pub fn crc32(crc: u32, slice: &[u8]) -> u32 {
     static IMPL: OnceLock<Crc32Fn> = OnceLock::new();
     let func = IMPL.get_or_init(|| {

@@ -111,6 +111,7 @@ mod arm;
 
 type Adler32Fn = unsafe fn(u32, &[u8]) -> u32;
 
+#[inline]
 pub fn adler32(adler: u32, slice: &[u8]) -> u32 {
     static IMPL: OnceLock<Adler32Fn> = OnceLock::new();
     let func = IMPL.get_or_init(|| {
