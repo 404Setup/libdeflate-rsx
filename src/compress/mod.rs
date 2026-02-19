@@ -1145,6 +1145,18 @@ impl Compressor {
                 // We add 16 bytes margin for the last flush (8 bytes) and safety.
                 if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
                     let mut lit_remain = seq.litrunlen as usize;
+                    while lit_remain >= 4 {
+                        // SAFETY: We verified sufficient buffer space above.
+                        // `write_literals_2` writes at most 30 bits and may flush 4 bytes.
+                        // We do this twice, so max 60 bits + flush overhead.
+                        // The loop precondition checks for space.
+                        unsafe {
+                            self.write_literals_2(bs, input[in_pos], input[in_pos + 1]);
+                            self.write_literals_2(bs, input[in_pos + 2], input[in_pos + 3]);
+                        }
+                        in_pos += 4;
+                        lit_remain -= 4;
+                    }
                     while lit_remain >= 2 {
                         // SAFETY: We verified sufficient buffer space above.
                         // `write_literals_2` writes at most 30 bits and may flush 4 bytes.
@@ -1355,6 +1367,14 @@ impl Compressor {
             if seq.litrunlen > 0 {
                 if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
                     let mut lit_remain = seq.litrunlen as usize;
+                    while lit_remain >= 4 {
+                        unsafe {
+                            self.write_literals_2(bs, input[in_pos], input[in_pos + 1]);
+                            self.write_literals_2(bs, input[in_pos + 2], input[in_pos + 3]);
+                        }
+                        in_pos += 4;
+                        lit_remain -= 4;
+                    }
                     while lit_remain >= 2 {
                         unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
                         in_pos += 2;
