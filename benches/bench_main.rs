@@ -1505,8 +1505,42 @@ criterion_group!(
     bench_decompress_offset32,
     bench_crc32_slice8_tail,
     bench_decompress_offset64_micro,
+    bench_decompress_offset48_micro,
 );
 criterion_main!(benches);
+
+fn bench_decompress_offset48_micro(c: &mut Criterion) {
+    let size = 1024 * 1024; // 1MB
+    // 48 bytes pattern
+    let pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijkl";
+    let mut original_data = Vec::with_capacity(size);
+    while original_data.len() < size {
+        original_data.extend_from_slice(pattern);
+    }
+    original_data.truncate(size);
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset48 Micro");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset48 micro", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
 
 fn bench_decompress_offset32(c: &mut Criterion) {
     let path = "bench_data/data_offset32.bin";

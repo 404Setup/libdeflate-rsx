@@ -369,6 +369,52 @@ pub unsafe fn decompress_bmi2(
                                                         );
                                                     }
                                                 }
+                                                48 => {
+                                                    let v2 = _mm_loadu_si128(
+                                                        src.add(16) as *const __m128i
+                                                    );
+                                                    let v3 = _mm_loadu_si128(
+                                                        src.add(32) as *const __m128i
+                                                    );
+                                                    let mut copied = 16;
+                                                    while copied + 48 <= length {
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v2,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 16)
+                                                                as *mut __m128i,
+                                                            v3,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 32)
+                                                                as *mut __m128i,
+                                                            v,
+                                                        );
+                                                        copied += 48;
+                                                    }
+                                                    while copied + 16 <= length {
+                                                        let idx = (copied % 48) / 16;
+                                                        let v_next = match idx {
+                                                            1 => v2,
+                                                            2 => v3,
+                                                            _ => v,
+                                                        };
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v_next,
+                                                        );
+                                                        copied += 16;
+                                                    }
+                                                    if copied < length {
+                                                        std::ptr::copy_nonoverlapping(
+                                                            src.add(copied),
+                                                            out_next.add(copied),
+                                                            length - copied,
+                                                        );
+                                                    }
+                                                }
                                                 64 => {
                                                     let v1 = _mm_loadu_si128(
                                                         src.add(16) as *const __m128i
