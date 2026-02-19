@@ -1119,33 +1119,184 @@ impl BtMatchFinder {
         self.base_offset += len;
     }
 
-    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
+    #[inline(always)]
+    unsafe fn find_match_impl<M: MatchLen>(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+    ) -> (usize, usize) {
         if pos.checked_add(4).map_or(true, |end| end > data.len()) {
             return (0, 0);
         }
 
+        let src = data.as_ptr().add(pos);
+        let val = src.cast::<u32>().read_unaligned();
+        let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
+        let h3 = (h3 >> 16) as usize;
+
+        let h4 = val.wrapping_mul(0x1E35A7BD);
+        let h4 = (h4 >> 16) as usize;
+
+        let abs_pos = self.base_offset + pos;
+
+        let cur_node_3 = (*self.hash3_tab.get_unchecked(h3))[0];
+        (*self.hash3_tab.get_unchecked_mut(h3))[0] = abs_pos as i32;
+        let cur_node_3_2 = (*self.hash3_tab.get_unchecked(h3))[1];
+        (*self.hash3_tab.get_unchecked_mut(h3))[1] = cur_node_3;
+
+        let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
+
+        let mut best_len = 0;
+        let mut best_offset = 0;
+
+        if cur_node_3 != -1 && cur_node_3 > cutoff && (cur_node_3 as usize) >= self.base_offset {
+            let p_abs = cur_node_3 as usize;
+            let p_rel = p_abs - self.base_offset;
+            let match_ptr = data.as_ptr().add(p_rel);
+            if *match_ptr == *src
+                && *match_ptr.add(1) == *src.add(1)
+                && *match_ptr.add(2) == *src.add(2)
+            {
+                best_len = 3;
+                best_offset = abs_pos - p_abs;
+            } else if cur_node_3_2 != -1
+                && cur_node_3_2 > cutoff
+                && (cur_node_3_2 as usize) >= self.base_offset
+            {
+                let p2_abs = cur_node_3_2 as usize;
+                let p2_rel = p2_abs - self.base_offset;
+                let match_ptr_2 = data.as_ptr().add(p2_rel);
+                if *match_ptr_2 == *src
+                    && *match_ptr_2.add(1) == *src.add(1)
+                    && *match_ptr_2.add(2) == *src.add(2)
+                {
+                    best_len = 3;
+                    best_offset = abs_pos - p2_abs;
+                }
+            }
+        }
+
+        let mut cur_node = *self.hash4_tab.get_unchecked(h4);
+        *self.hash4_tab.get_unchecked_mut(h4) = abs_pos as i32;
+
+        let child_idx = abs_pos & (MATCHFINDER_WINDOW_SIZE - 1);
+
+        if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
+            *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
+            return (best_len, best_offset);
+        }
+
+        let mut depth_remaining = max_depth;
+        let max_len_clamped = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
+
+        let mut pending_lt_node = child_idx;
+        let mut pending_lt_child = 0;
+        let mut pending_gt_node = child_idx;
+        let mut pending_gt_child = 1;
+
+        loop {
+            let p_abs = cur_node as usize;
+            let p_child_idx = p_abs & (MATCHFINDER_WINDOW_SIZE - 1);
+            let p_rel = p_abs - self.base_offset;
+            let match_ptr = data.as_ptr().add(p_rel);
+
+            let len = M::calc(match_ptr, src, max_len_clamped);
+
+            if len > best_len {
+                best_len = len;
+                best_offset = abs_pos - p_abs;
+                if len == max_len_clamped {
+                    let children = *self.child_tab.get_unchecked(p_child_idx);
+                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
+                        children[0];
+                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
+                        children[1];
+                    return (best_len, best_offset);
+                }
+            }
+
+            if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = cur_node;
+                pending_lt_node = p_child_idx;
+                pending_lt_child = 1;
+                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[1];
+            } else {
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = cur_node;
+                pending_gt_node = p_child_idx;
+                pending_gt_child = 0;
+                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[0];
+            }
+
+            if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
+                return (best_len, best_offset);
+            }
+
+            depth_remaining -= 1;
+            if depth_remaining == 0 {
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
+                return (best_len, best_offset);
+            }
+        }
+    }
+
+    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
         unsafe {
-            let src = data.as_ptr().add(pos);
-            let val = src.cast::<u32>().read_unaligned();
-            let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
-            let h3 = (h3 >> 16) as usize;
+            match self.match_len {
+                MatchLenStrategy::Scalar => self.find_match_impl::<ScalarStrategy>(data, pos, max_depth),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Sse2 => self.find_match_impl::<Sse2Strategy>(data, pos, max_depth),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx2 => self.find_match_impl::<Avx2Strategy>(data, pos, max_depth),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx512 => self.find_match_impl::<Avx512Strategy>(data, pos, max_depth),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx10 => self.find_match_impl::<Avx10Strategy>(data, pos, max_depth),
+                #[cfg(target_arch = "aarch64")]
+                MatchLenStrategy::Neon => self.find_match_impl::<NeonStrategy>(data, pos, max_depth),
+            }
+        }
+    }
 
-            let h4 = val.wrapping_mul(0x1E35A7BD);
-            let h4 = (h4 >> 16) as usize;
+    #[inline(always)]
+    unsafe fn advance_one_byte_impl<M: MatchLen>(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_len: usize,
+        nice_len: usize,
+        max_depth: usize,
+        matches: &mut Vec<(u16, u16)>,
+        record_matches: bool,
+    ) {
+        if pos.checked_add(4).map_or(true, |end| end > data.len()) {
+            return;
+        }
 
-            let abs_pos = self.base_offset + pos;
+        let src = data.as_ptr().add(pos);
+        let val = src.cast::<u32>().read_unaligned();
+        let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
+        let h3 = (h3 >> 16) as usize;
 
-            let cur_node_3 = (*self.hash3_tab.get_unchecked(h3))[0];
-            (*self.hash3_tab.get_unchecked_mut(h3))[0] = abs_pos as i32;
-            let cur_node_3_2 = (*self.hash3_tab.get_unchecked(h3))[1];
-            (*self.hash3_tab.get_unchecked_mut(h3))[1] = cur_node_3;
+        let h4 = val.wrapping_mul(0x1E35A7BD);
+        let h4 = (h4 >> 16) as usize;
 
-            let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
+        let abs_pos = self.base_offset + pos;
 
-            let mut best_len = 0;
-            let mut best_offset = 0;
+        let cur_node_3 = (*self.hash3_tab.get_unchecked(h3))[0];
+        (*self.hash3_tab.get_unchecked_mut(h3))[0] = abs_pos as i32;
+        let cur_node_3_2 = (*self.hash3_tab.get_unchecked(h3))[1];
+        (*self.hash3_tab.get_unchecked_mut(h3))[1] = cur_node_3;
 
-            if cur_node_3 != -1 && cur_node_3 > cutoff && (cur_node_3 as usize) >= self.base_offset
+        let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
+
+        if record_matches {
+            if cur_node_3 != -1
+                && cur_node_3 > cutoff
+                && (cur_node_3 as usize) >= self.base_offset
             {
                 let p_abs = cur_node_3 as usize;
                 let p_rel = p_abs - self.base_offset;
@@ -1154,8 +1305,7 @@ impl BtMatchFinder {
                     && *match_ptr.add(1) == *src.add(1)
                     && *match_ptr.add(2) == *src.add(2)
                 {
-                    best_len = 3;
-                    best_offset = abs_pos - p_abs;
+                    matches.push((3, (abs_pos - p_abs) as u16));
                 } else if cur_node_3_2 != -1
                     && cur_node_3_2 > cutoff
                     && (cur_node_3_2 as usize) >= self.base_offset
@@ -1167,89 +1317,77 @@ impl BtMatchFinder {
                         && *match_ptr_2.add(1) == *src.add(1)
                         && *match_ptr_2.add(2) == *src.add(2)
                     {
-                        best_len = 3;
-                        best_offset = abs_pos - p2_abs;
+                        matches.push((3, (abs_pos - p2_abs) as u16));
                     }
                 }
             }
+        }
 
-            let mut cur_node = *self.hash4_tab.get_unchecked(h4);
-            *self.hash4_tab.get_unchecked_mut(h4) = abs_pos as i32;
+        let mut cur_node = *self.hash4_tab.get_unchecked(h4);
+        *self.hash4_tab.get_unchecked_mut(h4) = abs_pos as i32;
 
-            let child_idx = abs_pos & (MATCHFINDER_WINDOW_SIZE - 1);
+        let child_idx = abs_pos & (MATCHFINDER_WINDOW_SIZE - 1);
+
+        if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
+            *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
+            return;
+        }
+
+        let mut depth_remaining = max_depth;
+        let mut best_len = 3;
+
+        let mut pending_lt_node = child_idx;
+        let mut pending_lt_child = 0;
+
+        let mut pending_gt_node = child_idx;
+        let mut pending_gt_child = 1;
+
+        let max_len_clamped = min(max_len, data.len() - pos);
+
+        loop {
+            let p_abs = cur_node as usize;
+            let p_child_idx = p_abs & (MATCHFINDER_WINDOW_SIZE - 1);
+            let p_rel = p_abs - self.base_offset;
+            let match_ptr = data.as_ptr().add(p_rel);
+
+            let len = M::calc(match_ptr, src, max_len_clamped);
+
+            if record_matches && len > best_len {
+                best_len = len;
+                matches.push((len as u16, (abs_pos - p_abs) as u16));
+                if len >= nice_len {
+                    let children = *self.child_tab.get_unchecked(p_child_idx);
+                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
+                        children[0];
+                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
+                        children[1];
+                    return;
+                }
+            }
+
+            if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = cur_node;
+                pending_lt_node = p_child_idx;
+                pending_lt_child = 1;
+                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[1];
+            } else {
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = cur_node;
+                pending_gt_node = p_child_idx;
+                pending_gt_child = 0;
+                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[0];
+            }
 
             if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-                *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
-                return (best_len, best_offset);
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
+                return;
             }
 
-            let mut depth_remaining = max_depth;
-            let max_len_clamped = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
-
-            let mut pending_lt_node = child_idx;
-            let mut pending_lt_child = 0;
-            let mut pending_gt_node = child_idx;
-            let mut pending_gt_child = 1;
-
-            loop {
-                let p_abs = cur_node as usize;
-                let p_child_idx = p_abs & (MATCHFINDER_WINDOW_SIZE - 1);
-                let p_rel = p_abs - self.base_offset;
-                let match_ptr = data.as_ptr().add(p_rel);
-
-                let len = match self.match_len {
-                    MatchLenStrategy::Scalar => match_len_sw(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Sse2 => match_len_sse2(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx2 => match_len_avx2(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx512 => match_len_avx512(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx10 => match_len_avx10(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "aarch64")]
-                    MatchLenStrategy::Neon => match_len_neon(match_ptr, src, max_len_clamped),
-                };
-
-                if len > best_len {
-                    best_len = len;
-                    best_offset = abs_pos - p_abs;
-                    if len == max_len_clamped {
-                        let children = *self.child_tab.get_unchecked(p_child_idx);
-                        (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                            children[0];
-                        (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                            children[1];
-                        return (best_len, best_offset);
-                    }
-                }
-
-                if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                        cur_node;
-                    pending_lt_node = p_child_idx;
-                    pending_lt_child = 1;
-                    cur_node = (*self.child_tab.get_unchecked(p_child_idx))[1];
-                } else {
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                        cur_node;
-                    pending_gt_node = p_child_idx;
-                    pending_gt_child = 0;
-                    cur_node = (*self.child_tab.get_unchecked(p_child_idx))[0];
-                }
-
-                if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                    return (best_len, best_offset);
-                }
-
-                depth_remaining -= 1;
-                if depth_remaining == 0 {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                    return (best_len, best_offset);
-                }
+            depth_remaining -= 1;
+            if depth_remaining == 0 {
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
+                return;
             }
         }
     }
@@ -1264,138 +1402,19 @@ impl BtMatchFinder {
         matches: &mut Vec<(u16, u16)>,
         record_matches: bool,
     ) {
-        if pos.checked_add(4).map_or(true, |end| end > data.len()) {
-            return;
-        }
-
         unsafe {
-            let src = data.as_ptr().add(pos);
-            let val = src.cast::<u32>().read_unaligned();
-            let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
-            let h3 = (h3 >> 16) as usize;
-
-            let h4 = val.wrapping_mul(0x1E35A7BD);
-            let h4 = (h4 >> 16) as usize;
-
-            let abs_pos = self.base_offset + pos;
-
-            let cur_node_3 = (*self.hash3_tab.get_unchecked(h3))[0];
-            (*self.hash3_tab.get_unchecked_mut(h3))[0] = abs_pos as i32;
-            let cur_node_3_2 = (*self.hash3_tab.get_unchecked(h3))[1];
-            (*self.hash3_tab.get_unchecked_mut(h3))[1] = cur_node_3;
-
-            let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
-
-            if record_matches {
-                if cur_node_3 != -1
-                    && cur_node_3 > cutoff
-                    && (cur_node_3 as usize) >= self.base_offset
-                {
-                    let p_abs = cur_node_3 as usize;
-                    let p_rel = p_abs - self.base_offset;
-                    let match_ptr = data.as_ptr().add(p_rel);
-                    if *match_ptr == *src
-                        && *match_ptr.add(1) == *src.add(1)
-                        && *match_ptr.add(2) == *src.add(2)
-                    {
-                        matches.push((3, (abs_pos - p_abs) as u16));
-                    } else if cur_node_3_2 != -1
-                        && cur_node_3_2 > cutoff
-                        && (cur_node_3_2 as usize) >= self.base_offset
-                    {
-                        let p2_abs = cur_node_3_2 as usize;
-                        let p2_rel = p2_abs - self.base_offset;
-                        let match_ptr_2 = data.as_ptr().add(p2_rel);
-                        if *match_ptr_2 == *src
-                            && *match_ptr_2.add(1) == *src.add(1)
-                            && *match_ptr_2.add(2) == *src.add(2)
-                        {
-                            matches.push((3, (abs_pos - p2_abs) as u16));
-                        }
-                    }
-                }
-            }
-
-            let mut cur_node = *self.hash4_tab.get_unchecked(h4);
-            *self.hash4_tab.get_unchecked_mut(h4) = abs_pos as i32;
-
-            let child_idx = abs_pos & (MATCHFINDER_WINDOW_SIZE - 1);
-
-            if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-                *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
-                return;
-            }
-
-            let mut depth_remaining = max_depth;
-            let mut best_len = 3;
-
-            let mut pending_lt_node = child_idx;
-            let mut pending_lt_child = 0;
-
-            let mut pending_gt_node = child_idx;
-            let mut pending_gt_child = 1;
-
-            let max_len_clamped = min(max_len, data.len() - pos);
-
-            loop {
-                let p_abs = cur_node as usize;
-                let p_child_idx = p_abs & (MATCHFINDER_WINDOW_SIZE - 1);
-                let p_rel = p_abs - self.base_offset;
-                let match_ptr = data.as_ptr().add(p_rel);
-
-                let len = match self.match_len {
-                    MatchLenStrategy::Scalar => match_len_sw(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Sse2 => match_len_sse2(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx2 => match_len_avx2(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx512 => match_len_avx512(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "x86_64")]
-                    MatchLenStrategy::Avx10 => match_len_avx10(match_ptr, src, max_len_clamped),
-                    #[cfg(target_arch = "aarch64")]
-                    MatchLenStrategy::Neon => match_len_neon(match_ptr, src, max_len_clamped),
-                };
-
-                if record_matches && len > best_len {
-                    best_len = len;
-                    matches.push((len as u16, (abs_pos - p_abs) as u16));
-                    if len >= nice_len {
-                        let children = *self.child_tab.get_unchecked(p_child_idx);
-                        (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                            children[0];
-                        (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                            children[1];
-                        return;
-                    }
-                }
-
-                if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                        cur_node;
-                    pending_lt_node = p_child_idx;
-                    pending_lt_child = 1;
-                    cur_node = (*self.child_tab.get_unchecked(p_child_idx))[1];
-                } else {
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                        cur_node;
-                    pending_gt_node = p_child_idx;
-                    pending_gt_child = 0;
-                    cur_node = (*self.child_tab.get_unchecked(p_child_idx))[0];
-                }
-
-                if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                    return;
-                }
-
-                depth_remaining -= 1;
-                if depth_remaining == 0 {
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                    return;
-                }
+            match self.match_len {
+                MatchLenStrategy::Scalar => self.advance_one_byte_impl::<ScalarStrategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Sse2 => self.advance_one_byte_impl::<Sse2Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx2 => self.advance_one_byte_impl::<Avx2Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx512 => self.advance_one_byte_impl::<Avx512Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx10 => self.advance_one_byte_impl::<Avx10Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                #[cfg(target_arch = "aarch64")]
+                MatchLenStrategy::Neon => self.advance_one_byte_impl::<NeonStrategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
             }
         }
     }
