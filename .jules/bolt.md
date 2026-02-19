@@ -31,3 +31,6 @@
 ## 2026-06-04 - [Offset 3 Optimization]
 **Learning:** Decompressing `offset == 3` using a byte-by-byte scalar loop is extremely slow (~1.44 GiB/s). By using precomputed shuffle masks (3 vectors for the 48-byte cycle, LCM(3, 16)) and loading 16 bytes from `src` (safely masking out garbage), we can process 48 bytes per iteration using SIMD. This yielded a ~540% throughput improvement (~9.2 GiB/s).
 **Action:** For small offsets (like 3) that don't fit power-of-2 optimizations, use `pshufb` with precomputed cyclic masks to construct the pattern vectors.
+## 2024-05-23 - [Match vs If-Else Dispatch in Hot Loops]
+**Learning:** Replacing a long `if-else if` chain (18+ branches) with a `match` statement in a tight loop (decompression offset handling) improved performance for mixed workloads and constant offsets that were deep in the chain, but surprisingly caused a regression for some offsets that were previously checked late but handled with complex logic (offset 15). This suggests that while `match` generally enables better code generation (jump tables), the specific layout or cache effects for complex arms can be sensitive.
+**Action:** When optimizing hot dispatch loops, prefer `match` for maintainability and general case performance, but verifying specific "hot" constants (like small offsets) is crucial as compiler heuristics might vary.
