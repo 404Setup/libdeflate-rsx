@@ -419,6 +419,30 @@ fn bench_adler32_micro(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_adler32_tail(c: &mut Criterion) {
+    // Sizes to test tail optimization: 1, 2, 3 (small), 7 (4+3), 15 (8+4+3), 31 (16+8+4+3)
+    let sizes = [1, 2, 3, 7, 15, 31];
+    let mut group = c.benchmark_group("Adler32 Tail");
+
+    for size in sizes {
+        let data = vec![0u8; size];
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input(
+            BenchmarkId::new("libdeflate-rs", size),
+            &size,
+            |b, &_size| {
+                b.iter(|| adler32(1, &data));
+            },
+        );
+
+        group.bench_with_input(BenchmarkId::new("libdeflater", size), &size, |b, &_size| {
+            b.iter(|| libdeflater::adler32(&data));
+        });
+    }
+    group.finish();
+}
+
 fn bench_checksums(c: &mut Criterion) {
     let files = [
         ("XXS", "bench_data/data_XXS.bin"),
@@ -1412,6 +1436,7 @@ criterion_group!(
     bench_parallel_alloc,
     bench_adler32_nano,
     bench_adler32_micro,
+    bench_adler32_tail,
     bench_crc32_micro,
     bench_decompress_offset8,
     bench_decompress_offset3,
