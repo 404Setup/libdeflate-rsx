@@ -11,12 +11,7 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     let mut data = p;
 
     if len < 16 {
-        // Optimize: For small inputs >= 4 bytes, the slicing-by-8 algorithm (extended to handle 4 bytes)
-        // is significantly faster than the byte-by-byte loop (crc32_slice1).
-        if len >= 4 {
-            return crate::crc32::crc32_slice8(crc, data);
-        }
-        return crate::crc32::crc32_slice1(crc, data);
+        return crate::crc32::crc32_slice8(crc, data);
     }
 
     let mults_128b = _mm_set_epi64x(CRC32_X95_MODG as i64, CRC32_X159_MODG as i64);
@@ -197,10 +192,8 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
 
     crc = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 4 {
+    if len > 0 {
         crc = crate::crc32::crc32_slice8(crc, data);
-    } else if len > 0 {
-        crc = crate::crc32::crc32_slice1(crc, data);
     }
 
     crc
@@ -224,7 +217,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
         if len < 64 {
             if len < 16 {
                 if len < 4 {
-                    return crate::crc32::crc32_slice1(crc, data);
+                    return crate::crc32::crc32_slice8(crc, data);
                 }
                 let mask = (1u32 << len) - 1;
                 x0 = _mm_xor_si128(
@@ -604,10 +597,8 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
 
     let mut res = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 4 {
+    if len > 0 {
         res = crate::crc32::crc32_slice8(res, data);
-    } else if len > 0 {
-        res = crate::crc32::crc32_slice1(res, data);
     }
 
     res
@@ -766,10 +757,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
         );
     } else {
         if len < 16 {
-            if len >= 4 {
-                return crate::crc32::crc32_slice8(crc, data);
-            }
-            return crate::crc32::crc32_slice1(crc, data);
+            return crate::crc32::crc32_slice8(crc, data);
         }
 
         if len >= 64 {
@@ -851,10 +839,8 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx2(crc: u32, p: &[u8]) -> u32 {
 
     let mut res = _mm_extract_epi32(x0, 2) as u32;
 
-    if len >= 4 {
+    if len > 0 {
         res = crate::crc32::crc32_slice8(res, data);
-    } else if len > 0 {
-        res = crate::crc32::crc32_slice1(res, data);
     }
 
     res
