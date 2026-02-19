@@ -696,15 +696,21 @@ impl Decompressor {
                         if offset >= length {
                             std::ptr::copy_nonoverlapping(src, out_next, length);
                         } else {
-                            let mut copied = 0;
-                            while copied < length {
-                                let copy_len = min(offset, length - copied);
-                                std::ptr::copy_nonoverlapping(
-                                    src.add(copied),
-                                    out_next.add(copied),
-                                    copy_len,
-                                );
-                                copied += copy_len;
+                            // Optimization: Use u64 copy loop for overlapping case with offset >= 8.
+                            // This avoids function call overhead of copy_nonoverlapping for small chunks.
+                            // Since offset >= 8, we can read 8 bytes and write 8 bytes safely
+                            // (the read source is at least 8 bytes behind the write destination).
+                            let src_ptr = src;
+                            let dest_ptr = out_next;
+                            let mut i = 0;
+                            while i + 8 <= length {
+                                let val = (src_ptr.add(i) as *const u64).read_unaligned();
+                                (dest_ptr.add(i) as *mut u64).write_unaligned(val);
+                                i += 8;
+                            }
+                            while i < length {
+                                *dest_ptr.add(i) = *src_ptr.add(i);
+                                i += 1;
                             }
                         }
                     }
