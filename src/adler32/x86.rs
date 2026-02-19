@@ -61,24 +61,26 @@ macro_rules! adler32_tail {
             }
 
             // Remaining 0-3 bytes.
-            if $len > 0 {
-                let b = *$ptr as u32;
-                $s1 += b;
-                $s2 += $s1;
-                $ptr = $ptr.add(1);
-                $len -= 1;
-            }
-            if $len > 0 {
-                let b = *$ptr as u32;
-                $s1 += b;
-                $s2 += $s1;
-                $ptr = $ptr.add(1);
-                $len -= 1;
-            }
-            if $len > 0 {
-                let b = *$ptr as u32;
-                $s1 += b;
-                $s2 += $s1;
+            match $len {
+                3 => {
+                    let b0 = *$ptr as u32;
+                    let b1 = *$ptr.add(1) as u32;
+                    let b2 = *$ptr.add(2) as u32;
+                    $s2 += ($s1 << 1) + $s1 + (b0 * 3) + (b1 * 2) + b2;
+                    $s1 += b0 + b1 + b2;
+                }
+                2 => {
+                    let b0 = *$ptr as u32;
+                    let b1 = *$ptr.add(1) as u32;
+                    $s2 += ($s1 << 1) + (b0 * 2) + b1;
+                    $s1 += b0 + b1;
+                }
+                1 => {
+                    let b0 = *$ptr as u32;
+                    $s2 += $s1 + b0;
+                    $s1 += b0;
+                }
+                _ => {}
             }
         }
     };
