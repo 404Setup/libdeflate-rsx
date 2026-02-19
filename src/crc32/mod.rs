@@ -15,14 +15,28 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         let v = u64::from_le(unsafe { std::ptr::read_unaligned(ptr as *const u64) });
         let v1 = v as u32;
         let v2 = (v >> 32) as u32;
-        crc = CRC32_SLICE8_TABLE[0x700 + ((crc ^ v1) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x600 + (((crc ^ v1) >> 8) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x500 + (((crc ^ v1) >> 16) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x400 + (((crc ^ v1) >> 24) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x300 + (v2 as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x200 + ((v2 >> 8) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x100 + ((v2 >> 16) as u8) as usize]
-            ^ CRC32_SLICE8_TABLE[0x000 + ((v2 >> 24) as u8) as usize];
+
+        let idx0 = ((crc ^ v1) as u8) as usize;
+        let idx1 = (((crc ^ v1) >> 8) as u8) as usize;
+        let idx2 = (((crc ^ v1) >> 16) as u8) as usize;
+        let idx3 = (((crc ^ v1) >> 24) as u8) as usize;
+        let idx4 = (v2 as u8) as usize;
+        let idx5 = ((v2 >> 8) as u8) as usize;
+        let idx6 = ((v2 >> 16) as u8) as usize;
+        let idx7 = ((v2 >> 24) as u8) as usize;
+
+        let t0 = CRC32_SLICE8_TABLE[0x700 + idx0];
+        let t1 = CRC32_SLICE8_TABLE[0x600 + idx1];
+        let t2 = CRC32_SLICE8_TABLE[0x500 + idx2];
+        let t3 = CRC32_SLICE8_TABLE[0x400 + idx3];
+        let t4 = CRC32_SLICE8_TABLE[0x300 + idx4];
+        let t5 = CRC32_SLICE8_TABLE[0x200 + idx5];
+        let t6 = CRC32_SLICE8_TABLE[0x100 + idx6];
+        let t7 = CRC32_SLICE8_TABLE[0x000 + idx7];
+
+        // Optimization: Use tree-based XOR reduction to break dependency chains and increase ILP.
+        crc = ((t0 ^ t1) ^ (t2 ^ t3)) ^ ((t4 ^ t5) ^ (t6 ^ t7));
+
         unsafe {
             ptr = ptr.add(8);
         }
