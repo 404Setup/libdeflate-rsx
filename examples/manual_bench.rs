@@ -14,19 +14,26 @@ fn main() {
 
     // Warmup
     for _ in 0..10 {
-        compressor.compress_deflate_into(&data, &mut out_buf).unwrap();
+        compressor
+            .compress_deflate_into(&data, &mut out_buf)
+            .unwrap();
     }
 
     let start = Instant::now();
     let iterations = 2000;
     let mut total_bytes = 0;
     for _ in 0..iterations {
-        let size = compressor.compress_deflate_into(&data, &mut out_buf).unwrap();
+        let size = compressor
+            .compress_deflate_into(&data, &mut out_buf)
+            .unwrap();
         total_bytes += size;
     }
     let duration = start.elapsed();
 
     println!("Compressed {} iterations of {} bytes", iterations, size);
     println!("Total time: {:?}", duration);
-    println!("Throughput: {:.2} GiB/s", (iterations as f64 * size as f64) / duration.as_secs_f64() / 1024.0 / 1024.0 / 1024.0);
+    println!(
+        "Throughput: {:.2} GiB/s",
+        (iterations as f64 * size as f64) / duration.as_secs_f64() / 1024.0 / 1024.0 / 1024.0
+    );
 }

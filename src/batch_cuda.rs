@@ -121,12 +121,17 @@ impl CudaBatchCompressor {
                 let size = size as usize;
 
                 // Security: Validate GPU output sizes to prevent panics or OOB access
-                if offset.checked_add(size).ok_or("Integer overflow in offset calculation")? > total_output_bound {
+                if offset
+                    .checked_add(size)
+                    .ok_or("Integer overflow in offset calculation")?
+                    > total_output_bound
+                {
                     return Err("GPU returned invalid compressed size (buffer overflow)".into());
                 }
 
                 // Double check against expected bound
-                let expected_bound = crate::compress::Compressor::deflate_compress_bound(inputs[i].len());
+                let expected_bound =
+                    crate::compress::Compressor::deflate_compress_bound(inputs[i].len());
                 if size > expected_bound {
                     return Err("GPU returned invalid compressed size (exceeds bound)".into());
                 }

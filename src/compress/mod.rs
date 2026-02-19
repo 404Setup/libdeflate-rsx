@@ -1799,7 +1799,13 @@ impl Compressor {
     }
 
     #[inline(always)]
-    unsafe fn write_match_fast(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) {
+    unsafe fn write_match_fast(
+        &self,
+        bs: &mut Bitstream,
+        len: usize,
+        offset: usize,
+        off_slot: usize,
+    ) {
         let entry = *self.match_len_table.get_unchecked(len);
         let code = entry as u16 as u32;
         let huff_len = (entry >> 16) as u8 as u32;
