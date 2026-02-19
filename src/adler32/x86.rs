@@ -71,8 +71,9 @@ macro_rules! adler32_tail {
                     $s1 += b0 + b1 + b2;
                 }
                 2 => {
-                    let b0 = *$ptr as u32;
-                    let b1 = *$ptr.add(1) as u32;
+                    let v = ($ptr as *const u16).read_unaligned() as u32;
+                    let b0 = v & 0xFF;
+                    let b1 = v >> 8;
                     $s2 += ($s1 << 1) + (b0 * 2) + b1;
                     $s1 += b0 + b1;
                 }
