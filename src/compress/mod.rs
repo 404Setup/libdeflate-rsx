@@ -1789,8 +1789,6 @@ impl Compressor {
         let len_val = code | ((len as u32).wrapping_sub(base) << huff_len);
         let len_len = huff_len + extra_bits;
 
-        bs.write_bits_unchecked_fast(len_val, len_len);
-
         let entry = *self.offset_table.get_unchecked(off_slot);
         let off_code = entry as u32;
         let off_len = (entry >> 32) as u8 as u32;
@@ -1800,7 +1798,12 @@ impl Compressor {
         let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
         let off_len_total = off_len + extra_bits;
 
-        bs.write_bits_unchecked_fast(off_val, off_len_total);
+        if len_len + off_len_total <= 32 {
+            bs.write_bits_unchecked_fast(len_val | (off_val << len_len), len_len + off_len_total);
+        } else {
+            bs.write_bits_unchecked_fast(len_val, len_len);
+            bs.write_bits_unchecked_fast(off_val, off_len_total);
+        }
     }
 
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) -> bool {

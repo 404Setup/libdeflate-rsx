@@ -28,7 +28,7 @@ fn bench_crc32_slice8(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
 
     group.bench_with_input("libdeflate-rs slice8", &size, |b, &_size| {
-        b.iter(|| crc32_slice8(0, &data));
+        b.iter(|| crc32_slice8(0, std::hint::black_box(&data)));
     });
 
     group.finish();
@@ -1668,14 +1668,14 @@ fn bench_crc32_slice8_tail(c: &mut Criterion) {
     let data = vec![0u8; size];
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_with_input("15 bytes", &size, |b, &_size| {
-        b.iter(|| crc32_slice8(0, &data));
+        b.iter(|| crc32_slice8(0, std::hint::black_box(&data)));
     });
 
     let size = 3;
     let data = vec![0u8; size];
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_with_input("3 bytes", &size, |b, &_size| {
-        b.iter(|| crc32_slice8(0, &data));
+        b.iter(|| crc32_slice8(0, std::hint::black_box(&data)));
     });
 
     group.finish();
