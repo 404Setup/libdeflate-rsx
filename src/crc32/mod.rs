@@ -41,15 +41,39 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         len -= 4;
     }
     if len > 0 {
-        let b = unsafe { *ptr };
-        crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
-        if len > 1 {
-            let b = unsafe { *ptr.add(1) };
-            crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
-            if len > 2 {
-                let b = unsafe { *ptr.add(2) };
-                crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[(crc as u8 ^ b) as usize];
+        match len {
+            3 => {
+                let v = u16::from_le(unsafe { (ptr as *const u16).read_unaligned() }) as u32;
+                let b2 = unsafe { *ptr.add(2) } as u32;
+                let b0 = v & 0xFF;
+                let b1 = v >> 8;
+
+                let idx0 = (crc as u8 as u32) ^ b0;
+                let idx1 = ((crc >> 8) as u8 as u32) ^ b1;
+                let idx2 = ((crc >> 16) as u8 as u32) ^ b2;
+
+                crc = (crc >> 24)
+                    ^ CRC32_SLICE8_TABLE[0x200 + idx0 as usize]
+                    ^ CRC32_SLICE8_TABLE[0x100 + idx1 as usize]
+                    ^ CRC32_SLICE8_TABLE[0x000 + idx2 as usize];
             }
+            2 => {
+                let v = u16::from_le(unsafe { (ptr as *const u16).read_unaligned() }) as u32;
+                let b0 = v & 0xFF;
+                let b1 = v >> 8;
+
+                let idx0 = (crc as u8 as u32) ^ b0;
+                let idx1 = ((crc >> 8) as u8 as u32) ^ b1;
+
+                crc = (crc >> 16)
+                    ^ CRC32_SLICE8_TABLE[0x100 + idx0 as usize]
+                    ^ CRC32_SLICE8_TABLE[0x000 + idx1 as usize];
+            }
+            1 => {
+                let b0 = unsafe { *ptr } as u32;
+                crc = (crc >> 8) ^ CRC32_SLICE8_TABLE[((crc as u8 as u32) ^ b0) as usize];
+            }
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
     crc

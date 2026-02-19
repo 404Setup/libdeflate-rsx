@@ -819,7 +819,10 @@ impl Decompressor {
                                     let pattern = prepare_pattern(offset, src_ptr);
                                     let mut i = 0;
                                     while i + 32 <= length {
-                                        std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(i) as *mut u64,
+                                            pattern,
+                                        );
                                         std::ptr::write_unaligned(
                                             dest_ptr.add(i + 8) as *mut u64,
                                             pattern,
@@ -835,7 +838,10 @@ impl Decompressor {
                                         i += 32;
                                     }
                                     while i + 8 <= length {
-                                        std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(i) as *mut u64,
+                                            pattern,
+                                        );
                                         i += 8;
                                     }
                                     while i < length {
@@ -846,7 +852,10 @@ impl Decompressor {
                                     let pattern = prepare_pattern(offset, src_ptr);
                                     let mut i = 0;
                                     while i + 8 <= length {
-                                        std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
+                                        std::ptr::write_unaligned(
+                                            dest_ptr.add(i) as *mut u64,
+                                            pattern,
+                                        );
                                         i += offset;
                                     }
                                     while i < length {
