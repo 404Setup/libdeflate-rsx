@@ -1,0 +1,26 @@
+--- src/decompress/mod.rs
++++ src/decompress/mod.rs
+@@ -548,15 +548,12 @@
+                             i += 1;
+                         }
+                     } else {
+-                        let mut copied = 0;
+-                        while copied + offset <= length {
+-                            std::ptr::copy_nonoverlapping(
+-                                src_ptr.add(copied),
+-                                dest_ptr.add(copied),
+-                                offset,
+-                            );
+-                            copied += offset;
+-                        }
++                        let pattern = prepare_pattern(offset, src_ptr);
++                        let mut i = 0;
++                        while i + 8 <= length {
++                            std::ptr::write_unaligned(dest_ptr.add(i) as *mut u64, pattern);
++                            i += offset;
++                        }
+                         while copied < length {
+-                            *dest_ptr.add(copied) = *src_ptr.add(copied);
+-                            copied += 1;
++                            *dest_ptr.add(i) = *src_ptr.add(i);
++                            i += 1;
