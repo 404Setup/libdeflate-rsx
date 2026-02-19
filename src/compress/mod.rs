@@ -906,26 +906,33 @@ impl Compressor {
 
     fn calculate_block_data_size(&self) -> usize {
         let mut bits = 0;
-        for i in 0..288 {
-            if self.litlen_freqs[i] > 0 {
-                bits += (self.litlen_freqs[i] as usize) * (self.litlen_lens[i] as usize);
-            }
-        }
-        for i in 0..32 {
-            if self.offset_freqs[i] > 0 {
-                bits += (self.offset_freqs[i] as usize) * (self.offset_lens[i] as usize);
-            }
-        }
-        for i in 257..286 {
-            if self.litlen_freqs[i] > 0 {
-                bits += (self.litlen_freqs[i] as usize) * (self.get_length_extra_bits(i - 257));
-            }
-        }
-        for i in 0..30 {
-            if self.offset_freqs[i] > 0 {
-                bits += (self.offset_freqs[i] as usize) * (self.get_offset_extra_bits(i));
-            }
-        }
+
+        bits += self
+            .litlen_freqs
+            .iter()
+            .zip(self.litlen_lens.iter())
+            .map(|(&freq, &len)| (freq as usize) * (len as usize))
+            .sum::<usize>();
+
+        bits += self
+            .offset_freqs
+            .iter()
+            .zip(self.offset_lens.iter())
+            .map(|(&freq, &len)| (freq as usize) * (len as usize))
+            .sum::<usize>();
+
+        bits += self.litlen_freqs[257..286]
+            .iter()
+            .zip(LENGTH_EXTRA_BITS_TABLE.iter())
+            .map(|(&freq, &extra)| (freq as usize) * (extra as usize))
+            .sum::<usize>();
+
+        bits += self.offset_freqs[0..30]
+            .iter()
+            .zip(OFFSET_EXTRA_BITS_TABLE.iter())
+            .map(|(&freq, &extra)| (freq as usize) * (extra as usize))
+            .sum::<usize>();
+
         bits
     }
 
@@ -1862,17 +1869,12 @@ impl Compressor {
         (LENGTH_WRITE_TABLE[len] >> 24) as usize
     }
 
-    fn get_length_extra_bits(&self, slot: usize) -> usize {
-        LENGTH_EXTRA_BITS_TABLE[slot] as usize
-    }
     fn get_offset_slot(&self, offset: usize) -> usize {
         // Optimization: Use a precomputed table for all possible offsets (up to 32768)
         // to avoid expensive bitwise operations and branches in the hot loop.
         unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset - 1) as usize }
     }
-    fn get_offset_extra_bits(&self, slot: usize) -> usize {
-        OFFSET_EXTRA_BITS_TABLE[slot] as usize
-    }
+
     fn update_costs(&mut self) {
         for len in 3..=DEFLATE_MAX_MATCH_LEN {
             let len_info = unsafe { *LENGTH_WRITE_TABLE.get_unchecked(len) };
