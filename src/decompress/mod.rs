@@ -354,11 +354,7 @@ impl Decompressor {
         input: &[u8],
         in_idx: &mut usize,
     ) -> DecompressResult {
-        while self.bitsleft < 14 && *in_idx < input.len() {
-            self.bitbuf |= (input[*in_idx] as u64) << self.bitsleft;
-            *in_idx += 1;
-            self.bitsleft += 8;
-        }
+        refill_bits!(input, *in_idx, self.bitbuf, self.bitsleft);
         if self.bitsleft < 14 {
             return DecompressResult::ShortInput;
         }
@@ -371,11 +367,7 @@ impl Decompressor {
             16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
         ];
         for i in 0..num_precode_syms {
-            while self.bitsleft < 3 && *in_idx < input.len() {
-                self.bitbuf |= (input[*in_idx] as u64) << self.bitsleft;
-                *in_idx += 1;
-                self.bitsleft += 8;
-            }
+            refill_bits!(input, *in_idx, self.bitbuf, self.bitsleft);
             if self.bitsleft < 3 {
                 return DecompressResult::ShortInput;
             }
@@ -392,11 +384,7 @@ impl Decompressor {
         let mut i = 0;
         let total_syms = num_litlen_syms + num_offset_syms;
         while i < total_syms {
-            while self.bitsleft < DEFLATE_MAX_PRE_CODEWORD_LEN as u32 + 7 && *in_idx < input.len() {
-                self.bitbuf |= (input[*in_idx] as u64) << self.bitsleft;
-                *in_idx += 1;
-                self.bitsleft += 8;
-            }
+            refill_bits!(input, *in_idx, self.bitbuf, self.bitsleft);
             let entry =
                 self.precode_decode_table[(self.bitbuf & ((1 << PRECODE_TABLEBITS) - 1)) as usize];
             let total_bits = entry & 0xFF;
