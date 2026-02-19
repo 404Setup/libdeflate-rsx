@@ -61,6 +61,14 @@ static OFFSET6_MASKS: [u8; 48] = [
     2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
 ];
 
+// LCM(7, 16) = 112. 7 vectors.
+static OFFSET7_MASKS: [u8; 112] = [
+    0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3,
+    4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0,
+    1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4,
+    5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6,
+];
+
 // LCM(5, 16) = 80. 5 vectors.
 static OFFSET5_MASKS: [u8; 80] = [
     0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1,
@@ -1132,10 +1140,55 @@ pub unsafe fn decompress_bmi2(
                                             copied += 1;
                                         }
                                     } else {
-                                        // Simple loop for offsets 7
+                                        // Offset 7.
+                                        let dest_ptr = out_next;
+                                        let src_ptr = src;
                                         let mut copied = 0;
+
+                                        if length >= 16 {
+                                            let v_src = _mm_loadu_si128(src_ptr as *const __m128i);
+                                            let masks_ptr =
+                                                OFFSET7_MASKS.as_ptr() as *const __m128i;
+                                            let v_base =
+                                                _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+
+                                            while copied + 112 <= length {
+                                                _mm_storeu_si128(
+                                                    dest_ptr.add(copied) as *mut __m128i,
+                                                    v_base,
+                                                );
+                                                for i in 1..7 {
+                                                    _mm_storeu_si128(
+                                                        dest_ptr.add(copied + i * 16) as *mut __m128i,
+                                                        _mm_shuffle_epi8(
+                                                            v_src,
+                                                            _mm_loadu_si128(masks_ptr.add(i)),
+                                                        ),
+                                                    );
+                                                }
+                                                copied += 112;
+                                            }
+
+                                            while copied + 16 <= length {
+                                                let idx = (copied % 112) / 16;
+                                                let v = if idx == 0 {
+                                                    v_base
+                                                } else {
+                                                    _mm_shuffle_epi8(
+                                                        v_src,
+                                                        _mm_loadu_si128(masks_ptr.add(idx)),
+                                                    )
+                                                };
+                                                _mm_storeu_si128(
+                                                    dest_ptr.add(copied) as *mut __m128i,
+                                                    v,
+                                                );
+                                                copied += 16;
+                                            }
+                                        }
+
                                         while copied < length {
-                                            *out_next.add(copied) = *src.add(copied);
+                                            *dest_ptr.add(copied) = *src_ptr.add(copied);
                                             copied += 1;
                                         }
                                     }

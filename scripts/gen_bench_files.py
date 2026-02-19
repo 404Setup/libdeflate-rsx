@@ -41,6 +41,7 @@ def main():
         generate_file(f"bench_data/data_{name}.bin", size)
 
     generate_offset8("bench_data/data_offset8.bin", 1024 * 1024)
+    generate_offset7("bench_data/data_offset7.bin", 1024 * 1024)
     generate_offset3("bench_data/data_offset3.bin", 1024 * 1024)
     generate_offset5("bench_data/data_offset5.bin", 1024 * 1024)
     generate_offset1("bench_data/data_offset1.bin", 1024 * 1024)
@@ -118,6 +119,11 @@ def generate_offset3(filename, target_size):
 def generate_offset8(filename, target_size):
     print(f"Generating {filename} ({target_size} bytes)...")
     pattern = b"12345678"
+    write_pattern(filename, target_size, pattern)
+
+def generate_offset7(filename, target_size):
+    print(f"Generating {filename} ({target_size} bytes)...")
+    pattern = b"1234567"
     write_pattern(filename, target_size, pattern)
 
 def generate_offset5(filename, target_size):

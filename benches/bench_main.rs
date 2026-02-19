@@ -761,6 +761,37 @@ fn bench_decompress_offset8(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_decompress_offset7(c: &mut Criterion) {
+    let path = "bench_data/data_offset7.bin";
+    if !Path::new(path).exists() {
+        return;
+    }
+    let original_data = read_file(path);
+    let size = original_data.len();
+
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut compressed_data = vec![0u8; size + size / 2 + 1024];
+    let compressed_size = compressor
+        .compress_deflate_into(&original_data, &mut compressed_data)
+        .unwrap();
+
+    let mut out_buf = vec![0u8; size];
+
+    let mut group = c.benchmark_group("Decompress offset7");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs offset7", &size, |b, &_size| {
+        let mut decompressor = Decompressor::new();
+        b.iter(|| {
+            decompressor
+                .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
 fn bench_decompress_offset3(c: &mut Criterion) {
     let path = "bench_data/data_offset3.bin";
     if !Path::new(path).exists() {
@@ -1443,6 +1474,7 @@ criterion_group!(
     bench_decompress_offset3_small,
     bench_decompress_offset9_small,
     bench_decompress_offset5,
+    bench_decompress_offset7,
     bench_decompress_offset6_micro,
     bench_decompress_offset1,
     bench_decompress_offset2,
