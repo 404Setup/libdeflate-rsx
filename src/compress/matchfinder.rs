@@ -1132,7 +1132,9 @@ impl BtMatchFinder {
 
         let src = data.as_ptr().add(pos);
         let val = src.cast::<u32>().read_unaligned();
-        let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
+        // Optimization: Use little-endian load and mask to get first 3 bytes.
+        // This is faster than `val.to_be() >> 8` (bswap + shift) and consistent with MatchFinder.
+        let h3 = (val.to_le() & 0xFFFFFF).wrapping_mul(0x1E35A7BD);
         let h3 = (h3 >> 16) as usize;
 
         let h4 = val.wrapping_mul(0x1E35A7BD);
@@ -1278,7 +1280,8 @@ impl BtMatchFinder {
 
         let src = data.as_ptr().add(pos);
         let val = src.cast::<u32>().read_unaligned();
-        let h3 = (val.to_be() >> 8).wrapping_mul(0x1E35A7BD);
+        // Optimization: Use little-endian load and mask to get first 3 bytes.
+        let h3 = (val.to_le() & 0xFFFFFF).wrapping_mul(0x1E35A7BD);
         let h3 = (h3 >> 16) as usize;
 
         let h4 = val.wrapping_mul(0x1E35A7BD);
