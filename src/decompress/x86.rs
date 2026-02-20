@@ -369,6 +369,65 @@ pub unsafe fn decompress_bmi2(
                                                         );
                                                     }
                                                 }
+                                                34 => {
+                                                    let mut copied = 16;
+                                                    let v1_init = _mm_loadu_si128(
+                                                        src.add(16) as *const __m128i
+                                                    );
+                                                    let v_tail = _mm_loadu_si128(
+                                                        src.add(18) as *const __m128i
+                                                    );
+                                                    let mut v0 = v;
+                                                    let mut v1 = v1_init;
+                                                    let mut v2 = _mm_alignr_epi8(v0, v_tail, 14);
+
+                                                    while copied + 48 <= length {
+                                                        let next_v0 = _mm_alignr_epi8(v1, v0, 14);
+                                                        let next_v1 = _mm_alignr_epi8(v2, v1, 14);
+                                                        let next_v2 =
+                                                            _mm_alignr_epi8(next_v0, v2, 14);
+
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 16)
+                                                                as *mut __m128i,
+                                                            v2,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 32)
+                                                                as *mut __m128i,
+                                                            next_v0,
+                                                        );
+
+                                                        v0 = next_v0;
+                                                        v1 = next_v1;
+                                                        v2 = next_v2;
+                                                        copied += 48;
+                                                    }
+
+                                                    while copied + 16 <= length {
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        let next_v = _mm_alignr_epi8(v1, v0, 14);
+                                                        v0 = v1;
+                                                        v1 = v2;
+                                                        v2 = next_v;
+                                                        copied += 16;
+                                                    }
+
+                                                    if copied < length {
+                                                        std::ptr::copy_nonoverlapping(
+                                                            src.add(copied),
+                                                            out_next.add(copied),
+                                                            length - copied,
+                                                        );
+                                                    }
+                                                }
                                                 50 => {
                                                     let mut copied = 16;
                                                     let mut v1 = _mm_loadu_si128(
