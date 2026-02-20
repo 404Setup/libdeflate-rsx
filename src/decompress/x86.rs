@@ -369,6 +369,66 @@ pub unsafe fn decompress_bmi2(
                                                         );
                                                     }
                                                 }
+                                                46 => {
+                                                    let v1 = _mm_loadu_si128(
+                                                        src.add(16) as *const __m128i
+                                                    );
+                                                    let v2_raw = _mm_loadu_si128(
+                                                        src.add(32) as *const __m128i
+                                                    );
+                                                    let mut v0 = v;
+                                                    let v0_shifted = _mm_slli_si128(v0, 14);
+                                                    let mut v2 =
+                                                        _mm_blend_epi16(v2_raw, v0_shifted, 0x80);
+                                                    let mut v1 = v1;
+
+                                                    let mut copied = 16;
+                                                    while copied + 48 <= length {
+                                                        let next_v0 = _mm_alignr_epi8(v1, v0, 2);
+                                                        let next_v1 = _mm_alignr_epi8(v2, v1, 2);
+                                                        let next_v2 =
+                                                            _mm_alignr_epi8(next_v0, v2, 2);
+
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 16)
+                                                                as *mut __m128i,
+                                                            v2,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 32)
+                                                                as *mut __m128i,
+                                                            next_v0,
+                                                        );
+
+                                                        v0 = next_v0;
+                                                        v1 = next_v1;
+                                                        v2 = next_v2;
+                                                        copied += 48;
+                                                    }
+
+                                                    while copied + 16 <= length {
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        let next = _mm_alignr_epi8(v1, v0, 2);
+                                                        v0 = v1;
+                                                        v1 = v2;
+                                                        v2 = next;
+                                                        copied += 16;
+                                                    }
+                                                    if copied < length {
+                                                        std::ptr::copy_nonoverlapping(
+                                                            src.add(copied),
+                                                            out_next.add(copied),
+                                                            length - copied,
+                                                        );
+                                                    }
+                                                }
                                                 34 => {
                                                     let mut copied = 16;
                                                     let v1_init = _mm_loadu_si128(
@@ -547,7 +607,8 @@ pub unsafe fn decompress_bmi2(
                                                     while copied + 48 <= length {
                                                         let new_v0 = _mm_alignr_epi8(v1, v0, 10);
                                                         let new_v1 = _mm_alignr_epi8(v2, v1, 10);
-                                                        let new_v2 = _mm_alignr_epi8(new_v0, v2, 10);
+                                                        let new_v2 =
+                                                            _mm_alignr_epi8(new_v0, v2, 10);
 
                                                         _mm_storeu_si128(
                                                             out_next.add(copied) as *mut __m128i,
@@ -662,7 +723,8 @@ pub unsafe fn decompress_bmi2(
                                                     let v0_shifted = _mm_slli_si128(v0, 10);
                                                     // Blend: Keep first 5 words (10 bytes) of v3_raw, take last 3 words (6 bytes) of v0_shifted.
                                                     // Mask 0xE0 (11100000) selects upper 3 words from v0_shifted.
-                                                    let v3 = _mm_blend_epi16(v3_raw, v0_shifted, 0xE0);
+                                                    let v3 =
+                                                        _mm_blend_epi16(v3_raw, v0_shifted, 0xE0);
 
                                                     let mut copied = 16;
                                                     let mut v0 = v;
@@ -773,7 +835,8 @@ pub unsafe fn decompress_bmi2(
                                                     // Shift v0 (0..16) left by 12 bytes to place 0..4 at 12..16
                                                     let v0_shifted = _mm_slli_si128(v0, 12);
                                                     // Blend: Mask 0xC0 selects upper 2 words (upper 4 bytes) from v0_shifted.
-                                                    let v3 = _mm_blend_epi16(v3_raw, v0_shifted, 0xC0);
+                                                    let v3 =
+                                                        _mm_blend_epi16(v3_raw, v0_shifted, 0xC0);
 
                                                     let v4 = _mm_alignr_epi8(v1, v0, 4);
                                                     let v5 = _mm_alignr_epi8(v2, v1, 4);
@@ -1660,10 +1723,10 @@ pub unsafe fn decompress_bmi2(
                                                     let mut copied = 16;
                                                     let v0 = v;
                                                     let v_align_low = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u32
+                                                        src.add(16) as *const u32,
                                                     );
                                                     let v_align_high = std::ptr::read_unaligned(
-                                                        src.add(20) as *const u16
+                                                        src.add(20) as *const u16,
                                                     );
                                                     let v_align_val = (v_align_low as u64)
                                                         | ((v_align_high as u64) << 32);

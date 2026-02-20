@@ -829,17 +829,29 @@ impl MatchFinder {
         };
         unsafe {
             match self.match_len {
-                MatchLenStrategy::Scalar => self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Scalar => {
+                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Sse2 => {
+                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx2 => {
+                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx512 => {
+                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx10 => {
+                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Neon => {
+                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match)
+                }
             }
         }
     }
@@ -848,17 +860,29 @@ impl MatchFinder {
         let mut on_match = |_: usize, _: usize| {};
         unsafe {
             match self.match_len {
-                MatchLenStrategy::Scalar => self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Scalar => {
+                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Sse2 => {
+                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx2 => {
+                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx512 => {
+                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Avx10 => {
+                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match)
+                }
                 #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match),
+                MatchLenStrategy::Neon => {
+                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match)
+                }
             }
         }
     }
@@ -1247,17 +1271,29 @@ impl BtMatchFinder {
     pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
         unsafe {
             match self.match_len {
-                MatchLenStrategy::Scalar => self.find_match_impl::<ScalarStrategy>(data, pos, max_depth),
+                MatchLenStrategy::Scalar => {
+                    self.find_match_impl::<ScalarStrategy>(data, pos, max_depth)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => self.find_match_impl::<Sse2Strategy>(data, pos, max_depth),
+                MatchLenStrategy::Sse2 => {
+                    self.find_match_impl::<Sse2Strategy>(data, pos, max_depth)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => self.find_match_impl::<Avx2Strategy>(data, pos, max_depth),
+                MatchLenStrategy::Avx2 => {
+                    self.find_match_impl::<Avx2Strategy>(data, pos, max_depth)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => self.find_match_impl::<Avx512Strategy>(data, pos, max_depth),
+                MatchLenStrategy::Avx512 => {
+                    self.find_match_impl::<Avx512Strategy>(data, pos, max_depth)
+                }
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => self.find_match_impl::<Avx10Strategy>(data, pos, max_depth),
+                MatchLenStrategy::Avx10 => {
+                    self.find_match_impl::<Avx10Strategy>(data, pos, max_depth)
+                }
                 #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => self.find_match_impl::<NeonStrategy>(data, pos, max_depth),
+                MatchLenStrategy::Neon => {
+                    self.find_match_impl::<NeonStrategy>(data, pos, max_depth)
+                }
             }
         }
     }
@@ -1296,9 +1332,7 @@ impl BtMatchFinder {
         let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
 
         if record_matches {
-            if cur_node_3 != -1
-                && cur_node_3 > cutoff
-                && (cur_node_3 as usize) >= self.base_offset
+            if cur_node_3 != -1 && cur_node_3 > cutoff && (cur_node_3 as usize) >= self.base_offset
             {
                 let p_abs = cur_node_3 as usize;
                 let p_rel = p_abs - self.base_offset;
@@ -1406,17 +1440,65 @@ impl BtMatchFinder {
     ) {
         unsafe {
             match self.match_len {
-                MatchLenStrategy::Scalar => self.advance_one_byte_impl::<ScalarStrategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Scalar => self.advance_one_byte_impl::<ScalarStrategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => self.advance_one_byte_impl::<Sse2Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Sse2 => self.advance_one_byte_impl::<Sse2Strategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => self.advance_one_byte_impl::<Avx2Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Avx2 => self.advance_one_byte_impl::<Avx2Strategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => self.advance_one_byte_impl::<Avx512Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Avx512 => self.advance_one_byte_impl::<Avx512Strategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => self.advance_one_byte_impl::<Avx10Strategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Avx10 => self.advance_one_byte_impl::<Avx10Strategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
                 #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => self.advance_one_byte_impl::<NeonStrategy>(data, pos, max_len, nice_len, max_depth, matches, record_matches),
+                MatchLenStrategy::Neon => self.advance_one_byte_impl::<NeonStrategy>(
+                    data,
+                    pos,
+                    max_len,
+                    nice_len,
+                    max_depth,
+                    matches,
+                    record_matches,
+                ),
             }
         }
     }
