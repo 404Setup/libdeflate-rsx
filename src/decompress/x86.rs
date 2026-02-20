@@ -204,6 +204,60 @@ unsafe fn decompress_write_cycle_vectors<const N: usize>(
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_fill_pattern(out_next: *mut u8, v_pattern: __m128i, length: usize) {
+    let mut i = 0;
+    while i + 64 <= length {
+        _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
+        _mm_storeu_si128(out_next.add(i + 16) as *mut __m128i, v_pattern);
+        _mm_storeu_si128(out_next.add(i + 32) as *mut __m128i, v_pattern);
+        _mm_storeu_si128(out_next.add(i + 48) as *mut __m128i, v_pattern);
+        i += 64;
+    }
+    while i + 32 <= length {
+        _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
+        _mm_storeu_si128(out_next.add(i + 16) as *mut __m128i, v_pattern);
+        i += 32;
+    }
+    if i + 16 <= length {
+        _mm_storeu_si128(out_next.add(i) as *mut __m128i, v_pattern);
+        i += 16;
+    }
+    let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
+    while i + 8 <= length {
+        std::ptr::write_unaligned(out_next.add(i) as *mut u64, pattern);
+        i += 8;
+    }
+    while i < length {
+        *out_next.add(i) = (pattern >> ((i & 7) * 8)) as u8;
+        i += 1;
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_alignr_cycle<const SHIFT: i32>(
+    out_next: *mut u8,
+    src: *const u8,
+    length: usize,
+    mut v_align: __m128i,
+    mut v_prev: __m128i,
+) {
+    let mut copied = 16;
+    while copied + 16 <= length {
+        let v_next = _mm_alignr_epi8::<SHIFT>(v_prev, v_align);
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_next);
+        v_align = v_prev;
+        v_prev = v_next;
+        copied += 16;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_cycle3<const SHIFT: i32>(
     out_next: *mut u8,
     src: *const u8,
@@ -772,94 +826,31 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 17 => {
-                                                    let mut copied = 16;
                                                     let c = *src.add(16);
-                                                    let mut v_align =
-                                                        _mm_insert_epi8(v, c as i32, 15);
-                                                    let mut v_prev = v;
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 15);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    let v_align = _mm_insert_epi8(v, c as i32, 15);
+                                                    decompress_offset_alignr_cycle::<15>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 18 => {
-                                                    let mut copied = 16;
-                                                    let mut v_prev = v;
                                                     let c1 = *src.add(16);
                                                     let c2 = *src.add(17);
-                                                    let mut v_align =
-                                                        _mm_insert_epi8(v_prev, c1 as i32, 14);
-                                                    v_align =
-                                                        _mm_insert_epi8(v_align, c2 as i32, 15);
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 14);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    while copied < length {
-                                                        let copy_len =
-                                                            std::cmp::min(offset, length - copied);
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            copy_len,
-                                                        );
-                                                        copied += copy_len;
-                                                    }
+                                                    let mut v_align = _mm_insert_epi8(v, c1 as i32, 14);
+                                                    v_align = _mm_insert_epi8(v_align, c2 as i32, 15);
+                                                    decompress_offset_alignr_cycle::<14>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 19 => {
-                                                    let mut copied = 16;
                                                     let c1 = *src.add(16);
                                                     let c2 = *src.add(17);
                                                     let c3 = *src.add(18);
-                                                    let mut v_align =
-                                                        _mm_insert_epi8(v, c1 as i32, 13);
-                                                    v_align =
-                                                        _mm_insert_epi8(v_align, c2 as i32, 14);
-                                                    v_align =
-                                                        _mm_insert_epi8(v_align, c3 as i32, 15);
-                                                    let mut v_prev = v;
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 13);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    let mut v_align = _mm_insert_epi8(v, c1 as i32, 13);
+                                                    v_align = _mm_insert_epi8(v_align, c2 as i32, 14);
+                                                    v_align = _mm_insert_epi8(v_align, c3 as i32, 15);
+                                                    decompress_offset_alignr_cycle::<13>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 20 => {
                                                     let val = std::ptr::read_unaligned(
@@ -883,32 +874,14 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 21 => {
-                                                    let mut copied = 16;
                                                     let val = std::ptr::read_unaligned(
                                                         src.add(16) as *const u64
                                                     );
                                                     let v_temp = _mm_cvtsi64_si128(val as i64);
-                                                    let mut v_align = _mm_slli_si128(v_temp, 11);
-                                                    let mut v_prev = v;
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 11);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    let v_align = _mm_slli_si128(v_temp, 11);
+                                                    decompress_offset_alignr_cycle::<11>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 22 => {
                                                     let v0 = v;
@@ -948,7 +921,6 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 23 => {
-                                                    let mut copied = 16;
                                                     let v0 = std::ptr::read_unaligned(
                                                         src.add(16) as *const u32
                                                     );
@@ -957,27 +929,10 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                     let val = (v0 as u64) | ((v1 as u64) << 24);
                                                     let v_temp = _mm_cvtsi64_si128(val as i64);
-                                                    let mut v_align = _mm_slli_si128(v_temp, 9);
-                                                    let mut v_prev = v;
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 9);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    let v_align = _mm_slli_si128(v_temp, 9);
+                                                    decompress_offset_alignr_cycle::<9>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 24 => {
                                                     let v_part1 = std::ptr::read_unaligned(
@@ -1003,7 +958,6 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 25 => {
-                                                    let mut copied = 16;
                                                     let val = std::ptr::read_unaligned(
                                                         src.add(16) as *const u64
                                                     );
@@ -1011,27 +965,10 @@ pub unsafe fn decompress_bmi2(
                                                     let v_temp = _mm_cvtsi64_si128(val as i64);
                                                     let v_temp =
                                                         _mm_insert_epi8(v_temp, c as i32, 8);
-                                                    let mut v_align = _mm_slli_si128(v_temp, 7);
-                                                    let mut v_prev = v;
-
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 7);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    let v_align = _mm_slli_si128(v_temp, 7);
+                                                    decompress_offset_alignr_cycle::<7>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 26 => {
                                                     // LCM(26, 16) = 208. 13 vectors.
@@ -1071,29 +1008,12 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 27 => {
-                                                    let mut copied = 16;
-                                                    let mut v_align = _mm_loadu_si128(
+                                                    let v_align = _mm_loadu_si128(
                                                         src.add(11) as *const __m128i
                                                     );
-                                                    let mut v_prev = v;
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 5);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    decompress_offset_alignr_cycle::<5>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 28 => {
                                                     let v_align = _mm_loadu_si128(
@@ -1117,79 +1037,28 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 29 => {
-                                                    let mut copied = 16;
-                                                    let mut v_align = _mm_loadu_si128(
+                                                    let v_align = _mm_loadu_si128(
                                                         src.add(13) as *const __m128i
                                                     );
-                                                    let mut v_prev = v;
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 3);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    decompress_offset_alignr_cycle::<3>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 30 => {
-                                                    let mut copied = 16;
-                                                    let mut v_align = _mm_loadu_si128(
+                                                    let v_align = _mm_loadu_si128(
                                                         src.add(14) as *const __m128i
                                                     );
-                                                    let mut v_prev = v;
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 2);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    decompress_offset_alignr_cycle::<2>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 31 => {
-                                                    let mut copied = 16;
-                                                    let mut v_align = _mm_loadu_si128(
+                                                    let v_align = _mm_loadu_si128(
                                                         src.add(15) as *const __m128i
                                                     );
-                                                    let mut v_prev = v;
-                                                    while copied + 16 <= length {
-                                                        let v_next =
-                                                            _mm_alignr_epi8(v_prev, v_align, 1);
-                                                        _mm_storeu_si128(
-                                                            out_next.add(copied) as *mut __m128i,
-                                                            v_next,
-                                                        );
-                                                        v_align = v_prev;
-                                                        v_prev = v_next;
-                                                        copied += 16;
-                                                    }
-                                                    if copied < length {
-                                                        std::ptr::copy_nonoverlapping(
-                                                            src.add(copied),
-                                                            out_next.add(copied),
-                                                            length - copied,
-                                                        );
-                                                    }
+                                                    decompress_offset_alignr_cycle::<1>(
+                                                        out_next, src, length, v_align, v,
+                                                    );
                                                 }
                                                 32 => {
                                                     let v2 = _mm_loadu_si128(
@@ -1365,56 +1234,7 @@ pub unsafe fn decompress_bmi2(
                                                     as i32),
                                                 _ => std::hint::unreachable_unchecked(),
                                             };
-                                            let mut i = 0;
-                                            while i + 64 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 16) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 32) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 48) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 64;
-                                            }
-                                            while i + 32 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 16) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 32;
-                                            }
-                                            if i + 16 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 16;
-                                            }
-                                            let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
-                                            while i + 8 <= length {
-                                                std::ptr::write_unaligned(
-                                                    out_next.add(i) as *mut u64,
-                                                    pattern,
-                                                );
-                                                i += 8;
-                                            }
-                                            while i < length {
-                                                *out_next.add(i) = (pattern >> ((i & 7) * 8)) as u8;
-                                                i += 1;
-                                            }
+                                            decompress_fill_pattern(out_next, v_pattern, length);
                                         }
                                         3 => {
                                             decompress_shuffle_pattern::<3>(
@@ -1451,57 +1271,7 @@ pub unsafe fn decompress_bmi2(
                                         8 => {
                                             let val = std::ptr::read_unaligned(src as *const u64);
                                             let v_pattern = _mm_set1_epi64x(val as i64);
-                                            _mm_storeu_si128(out_next as *mut __m128i, v_pattern);
-                                            let mut i = 16;
-                                            while i + 64 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 16) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 32) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 48) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 64;
-                                            }
-                                            while i + 32 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                _mm_storeu_si128(
-                                                    out_next.add(i + 16) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 32;
-                                            }
-                                            if i + 16 <= length {
-                                                _mm_storeu_si128(
-                                                    out_next.add(i) as *mut __m128i,
-                                                    v_pattern,
-                                                );
-                                                i += 16;
-                                            }
-                                            let pattern = _mm_cvtsi128_si64(v_pattern) as u64;
-                                            while i + 8 <= length {
-                                                std::ptr::write_unaligned(
-                                                    out_next.add(i) as *mut u64,
-                                                    pattern,
-                                                );
-                                                i += 8;
-                                            }
-                                            while i < length {
-                                                *out_next.add(i) = (pattern >> ((i & 7) * 8)) as u8;
-                                                i += 1;
-                                            }
+                                            decompress_fill_pattern(out_next, v_pattern, length);
                                         }
                                         9 => {
                                             decompress_shuffle_pattern::<9>(
