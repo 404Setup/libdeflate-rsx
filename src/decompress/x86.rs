@@ -369,6 +369,119 @@ pub unsafe fn decompress_bmi2(
                                                         );
                                                     }
                                                 }
+                                                62 => {
+                                                    let v1 = _mm_loadu_si128(
+                                                        src.add(16) as *const __m128i
+                                                    );
+                                                    let v2 = _mm_loadu_si128(
+                                                        src.add(32) as *const __m128i
+                                                    );
+                                                    // Synthesize v3: src[48..64]. Bytes 48..62 are valid.
+                                                    // Bytes 62..64 (2 bytes) wrap around to 0..2.
+                                                    // We load src[48..64] (last 2 bytes are garbage/out_next).
+                                                    let v3_raw = _mm_loadu_si128(
+                                                        src.add(48) as *const __m128i
+                                                    );
+                                                    let v0 = v;
+                                                    // Shift v0 (0..16) left by 14 bytes to place 0..2 at 14..16.
+                                                    let v0_shifted = _mm_slli_si128(v0, 14);
+                                                    // Blend: Keep first 7 words (14 bytes) of v3_raw, take last 1 word (2 bytes) of v0_shifted.
+                                                    // Mask 0x80 (10000000) selects upper 1 word from v0_shifted.
+                                                    let v3 =
+                                                        _mm_blend_epi16(v3_raw, v0_shifted, 0x80);
+
+                                                    let mut copied = 16;
+                                                    let mut v0 = v;
+                                                    let mut v1 = v1;
+                                                    let mut v2 = v2;
+                                                    let mut v3 = v3;
+
+                                                    while copied + 64 <= length {
+                                                        let next_v0 = _mm_alignr_epi8(v1, v0, 2);
+                                                        let next_v1 = _mm_alignr_epi8(v2, v1, 2);
+                                                        let next_v2 = _mm_alignr_epi8(v3, v2, 2);
+                                                        let next_v3 =
+                                                            _mm_alignr_epi8(next_v0, v3, 2);
+
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 16)
+                                                                as *mut __m128i,
+                                                            v2,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 32)
+                                                                as *mut __m128i,
+                                                            v3,
+                                                        );
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied + 48)
+                                                                as *mut __m128i,
+                                                            next_v0,
+                                                        );
+
+                                                        v0 = next_v0;
+                                                        v1 = next_v1;
+                                                        v2 = next_v2;
+                                                        v3 = next_v3;
+                                                        copied += 64;
+                                                    }
+
+                                                    while copied + 16 <= length {
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v1,
+                                                        );
+                                                        copied += 16;
+                                                        if copied + 16 > length {
+                                                            break;
+                                                        }
+
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v2,
+                                                        );
+                                                        copied += 16;
+                                                        if copied + 16 > length {
+                                                            break;
+                                                        }
+
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            v3,
+                                                        );
+                                                        copied += 16;
+                                                        if copied + 16 > length {
+                                                            break;
+                                                        }
+
+                                                        let next_v0 = _mm_alignr_epi8(v1, v0, 2);
+                                                        _mm_storeu_si128(
+                                                            out_next.add(copied) as *mut __m128i,
+                                                            next_v0,
+                                                        );
+                                                        copied += 16;
+
+                                                        let next_v1 = _mm_alignr_epi8(v2, v1, 2);
+                                                        let next_v2 = _mm_alignr_epi8(v3, v2, 2);
+                                                        let next_v3 =
+                                                            _mm_alignr_epi8(next_v0, v3, 2);
+                                                        v0 = next_v0;
+                                                        v1 = next_v1;
+                                                        v2 = next_v2;
+                                                        v3 = next_v3;
+                                                    }
+                                                    if copied < length {
+                                                        std::ptr::copy_nonoverlapping(
+                                                            src.add(copied),
+                                                            out_next.add(copied),
+                                                            length - copied,
+                                                        );
+                                                    }
+                                                }
                                                 54 => {
                                                     let v1 = _mm_loadu_si128(
                                                         src.add(16) as *const __m128i
