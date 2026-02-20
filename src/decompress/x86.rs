@@ -916,20 +916,22 @@ pub unsafe fn decompress_bmi2(
                                                 }
                                                 56 => {
                                                     // LCM(56, 16) = 112.
-                                                    // V3 (48..64) reads src[48..56] and src[56..64].
-                                                    // src[56..64] overlaps with out_next[0..8] (which is src[0..8]),
-                                                    // so it correctly forms the [P[48..56], P[0..8]] vector.
                                                     let v1 = _mm_loadu_si128(
                                                         src.add(16) as *const __m128i
                                                     );
                                                     let v2 = _mm_loadu_si128(
                                                         src.add(32) as *const __m128i
                                                     );
-                                                    let v3 = _mm_loadu_si128(
+                                                    // Optimize v3 construction to avoid store-forwarding stall.
+                                                    // v3 should be [src[48..56], src[0..8]].
+                                                    // src[0..8] is already in v0[0..8].
+                                                    // We load src[48..56] using loadl_epi64.
+                                                    let v0 = v;
+                                                    let v3_low = _mm_loadl_epi64(
                                                         src.add(48) as *const __m128i
                                                     );
+                                                    let v3 = _mm_unpacklo_epi64(v3_low, v0);
 
-                                                    let v0 = v;
                                                     let v4 = _mm_alignr_epi8(v1, v0, 8);
                                                     let v5 = _mm_alignr_epi8(v2, v1, 8);
                                                     let v6 = _mm_alignr_epi8(v3, v2, 8);
