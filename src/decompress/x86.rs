@@ -399,6 +399,351 @@ unsafe fn decompress_offset_cycle4<const SHIFT: i32>(
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_20(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let val = std::ptr::read_unaligned(src.add(16) as *const u32);
+    let v_temp = _mm_cvtsi32_si128(val as i32);
+    let v_align = _mm_slli_si128(v_temp, 12);
+
+    let v0 = v;
+    let v1 = _mm_alignr_epi8(v0, v_align, 12);
+    // Optimized parallel computation
+    let v2 = _mm_alignr_epi8(v1, v0, 12);
+    let v3 = _mm_alignr_epi8(v1, v0, 8);
+    let v4 = _mm_alignr_epi8(v1, v0, 4);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v4, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_24(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let val = std::ptr::read_unaligned(src.add(16) as *const u64);
+    let v_tail = _mm_cvtsi64_si128(val as i64);
+
+    let v0 = v;
+    let v1 = _mm_unpacklo_epi64(v_tail, v0);
+    let v2 = _mm_alignr_epi8(v_tail, v0, 8);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_26(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v0 = v;
+    let v_align = _mm_loadu_si128(src.add(10) as *const __m128i);
+
+    let v1 = _mm_alignr_epi8(v0, v_align, 6);
+    let v2 = _mm_alignr_epi8(v1, v0, 6);
+    let v3 = _mm_alignr_epi8(v2, v1, 6);
+    let v4 = _mm_alignr_epi8(v3, v2, 6);
+    let v5 = _mm_alignr_epi8(v4, v3, 6);
+    let v6 = _mm_alignr_epi8(v5, v4, 6);
+    let v7 = _mm_alignr_epi8(v6, v5, 6);
+    let v8 = _mm_alignr_epi8(v7, v6, 6);
+    let v9 = _mm_alignr_epi8(v8, v7, 6);
+    let v10 = _mm_alignr_epi8(v9, v8, 6);
+    let v11 = _mm_alignr_epi8(v10, v9, 6);
+    let v12 = _mm_alignr_epi8(v11, v10, 6);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[
+            v1, v2, v3, v4, v5, v6, v7, v8, v9,
+            v10, v11, v12, v0,
+        ],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_28(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v_align = _mm_loadu_si128(src.add(12) as *const __m128i);
+    let v0 = v;
+
+    // Optimized parallel computation
+    let v1 = _mm_alignr_epi8(v0, v_align, 4);
+    let v3 = _mm_alignr_epi8(v0, v_align, 8);
+    let v5 = _mm_alignr_epi8(v0, v_align, 12);
+    let v6 = _mm_blend_epi16(_mm_srli_si128(v0, 12), v_align, 0xFC);
+
+    let v2 = _mm_blend_epi16(_mm_srli_si128(v0, 4), _mm_slli_si128(v_align, 8), 0xC0);
+    let v4 = _mm_blend_epi16(_mm_srli_si128(v0, 8), _mm_slli_si128(v_align, 4), 0xF0);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v4, v5, v6, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_36(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v_part = _mm_loadu_si128(src.add(20) as *const __m128i);
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v0 = v;
+
+    let v2 = _mm_alignr_epi8(v0, v_part, 12);
+    let v3 = _mm_alignr_epi8(v1, v0, 12);
+    let v4 = _mm_alignr_epi8(v0, v_part, 8);
+    let v5 = _mm_alignr_epi8(v1, v0, 8);
+    let v6 = _mm_alignr_epi8(v0, v_part, 4);
+    let v7 = _mm_alignr_epi8(v1, v0, 4);
+    let v8 = v_part;
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v4, v5, v6, v7, v8, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_40(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v4 = _mm_loadu_si128(src.add(24) as *const __m128i);
+    let v0 = v;
+
+    let v2 = _mm_alignr_epi8(v0, v4, 8);
+    let v3 = _mm_alignr_epi8(v1, v0, 8);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v4, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_44(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v0 = v;
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v_end = _mm_loadu_si128(src.add(28) as *const __m128i);
+    let v2 = _mm_alignr_epi8(v0, v_end, 4);
+    let v3 = _mm_alignr_epi8(v1, v0, 4);
+    let v4 = _mm_alignr_epi8(v2, v1, 4);
+    let v5 = _mm_alignr_epi8(v3, v2, 4);
+    let v6 = _mm_alignr_epi8(v4, v3, 4);
+    let v7 = _mm_alignr_epi8(v5, v4, 4);
+    let v8 = _mm_alignr_epi8(v6, v5, 4);
+    let v9 = _mm_alignr_epi8(v7, v6, 4);
+    let v10 = _mm_alignr_epi8(v8, v7, 4);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[
+            v1, v2, v3, v4, v5, v6, v7, v8, v9,
+            v10, v0,
+        ],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_48(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v2 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v3 = _mm_loadu_si128(src.add(32) as *const __m128i);
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v2, v3, v],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_52(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v0 = v;
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v2 = _mm_loadu_si128(src.add(32) as *const __m128i);
+    let v_tail = _mm_loadu_si128(src.add(36) as *const __m128i);
+    let v3 = _mm_alignr_epi8(v0, v_tail, 12);
+
+    let v4 = _mm_alignr_epi8(v1, v0, 12);
+    let v5 = _mm_alignr_epi8(v2, v1, 12);
+    let v6 = _mm_alignr_epi8(v3, v2, 12);
+    let v7 = _mm_alignr_epi8(v4, v3, 12);
+    let v8 = _mm_alignr_epi8(v5, v4, 12);
+    let v9 = _mm_alignr_epi8(v6, v5, 12);
+    let v10 = _mm_alignr_epi8(v7, v6, 12);
+    let v11 = _mm_alignr_epi8(v8, v7, 12);
+    let v12 = _mm_alignr_epi8(v9, v8, 12);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[
+            v1, v2, v3, v4, v5, v6, v7, v8, v9,
+            v10, v11, v12, v0,
+        ],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_56(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v2 = _mm_loadu_si128(src.add(32) as *const __m128i);
+    let v0 = v;
+    let v3_low = _mm_loadl_epi64(src.add(48) as *const __m128i);
+    let v3 = _mm_unpacklo_epi64(v3_low, v0);
+
+    let v4 = _mm_alignr_epi8(v1, v0, 8);
+    let v5 = _mm_alignr_epi8(v2, v1, 8);
+    let v6 = _mm_alignr_epi8(v3, v2, 8);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v4, v5, v6, v0],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_60(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v2 = _mm_loadu_si128(src.add(32) as *const __m128i);
+    let v3_raw = _mm_loadu_si128(src.add(48) as *const __m128i);
+    let v0 = v;
+    let v0_shifted = _mm_slli_si128(v0, 12);
+    let v3 = _mm_blend_epi16(v3_raw, v0_shifted, 0xC0);
+
+    let v4 = _mm_alignr_epi8(v1, v0, 4);
+    let v5 = _mm_alignr_epi8(v2, v1, 4);
+    let v6 = _mm_alignr_epi8(v3, v2, 4);
+    let v7 = _mm_alignr_epi8(v4, v3, 4);
+    let v8 = _mm_alignr_epi8(v5, v4, 4);
+    let v9 = _mm_alignr_epi8(v6, v5, 4);
+    let v10 = _mm_alignr_epi8(v7, v6, 4);
+    let v11 = _mm_alignr_epi8(v8, v7, 4);
+    let v12 = _mm_alignr_epi8(v9, v8, 4);
+    let v13 = _mm_alignr_epi8(v10, v9, 4);
+    let v14 = _mm_alignr_epi8(v11, v10, 4);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[
+            v1, v2, v3, v4, v5, v6, v7, v8, v9,
+            v10, v11, v12, v13, v14, v0,
+        ],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_64(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v2 = _mm_loadu_si128(src.add(32) as *const __m128i);
+    let v3 = _mm_loadu_si128(src.add(48) as *const __m128i);
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[v1, v2, v3, v],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 pub unsafe fn decompress_bmi2(
     d: &mut Decompressor,
     input: &[u8],
@@ -625,204 +970,13 @@ pub unsafe fn decompress_bmi2(
                                                 61 => decompress_offset_cycle4::<3>(out_next, src, v, length),
                                                 62 => decompress_offset_cycle4::<2>(out_next, src, v, length),
                                                 63 => decompress_offset_cycle4::<1>(out_next, src, v, length),
-                                                60 => {
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(32) as *const __m128i
-                                                    );
-                                                    // Explicitly construct v3 from src[48..64] but overwriting the last 4 bytes
-                                                    // (which overlap with out_next[0..4]) with valid data from v0.
-                                                    // This avoids relying on the read-after-write behavior of overlapping pointers.
-                                                    let v3_raw = _mm_loadu_si128(
-                                                        src.add(48) as *const __m128i
-                                                    );
-                                                    let v0 = v;
-                                                    // Shift v0 (0..16) left by 12 bytes to place 0..4 at 12..16
-                                                    let v0_shifted = _mm_slli_si128(v0, 12);
-                                                    // Blend: Mask 0xC0 selects upper 2 words (upper 4 bytes) from v0_shifted.
-                                                    let v3 =
-                                                        _mm_blend_epi16(v3_raw, v0_shifted, 0xC0);
-
-                                                    let v4 = _mm_alignr_epi8(v1, v0, 4);
-                                                    let v5 = _mm_alignr_epi8(v2, v1, 4);
-                                                    let v6 = _mm_alignr_epi8(v3, v2, 4);
-                                                    let v7 = _mm_alignr_epi8(v4, v3, 4);
-                                                    let v8 = _mm_alignr_epi8(v5, v4, 4);
-                                                    let v9 = _mm_alignr_epi8(v6, v5, 4);
-                                                    let v10 = _mm_alignr_epi8(v7, v6, 4);
-                                                    let v11 = _mm_alignr_epi8(v8, v7, 4);
-                                                    let v12 = _mm_alignr_epi8(v9, v8, 4);
-                                                    let v13 = _mm_alignr_epi8(v10, v9, 4);
-                                                    let v14 = _mm_alignr_epi8(v11, v10, 4);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[
-                                                            v1, v2, v3, v4, v5, v6, v7, v8, v9,
-                                                            v10, v11, v12, v13, v14, v0,
-                                                        ],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                44 => {
-                                                    let v0 = v;
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v_end = _mm_loadu_si128(
-                                                        src.add(28) as *const __m128i
-                                                    );
-                                                    let v2 = _mm_alignr_epi8(v0, v_end, 4);
-                                                    let v3 = _mm_alignr_epi8(v1, v0, 4);
-                                                    let v4 = _mm_alignr_epi8(v2, v1, 4);
-                                                    let v5 = _mm_alignr_epi8(v3, v2, 4);
-                                                    let v6 = _mm_alignr_epi8(v4, v3, 4);
-                                                    let v7 = _mm_alignr_epi8(v5, v4, 4);
-                                                    let v8 = _mm_alignr_epi8(v6, v5, 4);
-                                                    let v9 = _mm_alignr_epi8(v7, v6, 4);
-                                                    let v10 = _mm_alignr_epi8(v8, v7, 4);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[
-                                                            v1, v2, v3, v4, v5, v6, v7, v8, v9,
-                                                            v10, v0,
-                                                        ],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                36 => {
-                                                    let v_part = _mm_loadu_si128(
-                                                        src.add(20) as *const __m128i
-                                                    );
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v0 = v;
-
-                                                    let v2 = _mm_alignr_epi8(v0, v_part, 12);
-                                                    let v3 = _mm_alignr_epi8(v1, v0, 12);
-                                                    let v4 = _mm_alignr_epi8(v0, v_part, 8);
-                                                    let v5 = _mm_alignr_epi8(v1, v0, 8);
-                                                    let v6 = _mm_alignr_epi8(v0, v_part, 4);
-                                                    let v7 = _mm_alignr_epi8(v1, v0, 4);
-                                                    let v8 = v_part;
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v4, v5, v6, v7, v8, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                52 => {
-                                                    let v0 = v;
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(32) as *const __m128i
-                                                    );
-                                                    // Load tail (36..52) which contains 48..52 at [12..16]
-                                                    let v_tail = _mm_loadu_si128(
-                                                        src.add(36) as *const __m128i
-                                                    );
-                                                    // v3: 48..52 ++ 0..12
-                                                    let v3 = _mm_alignr_epi8(v0, v_tail, 12);
-
-                                                    // The cycle uses shift 12 for all subsequent vectors
-                                                    let v4 = _mm_alignr_epi8(v1, v0, 12);
-                                                    let v5 = _mm_alignr_epi8(v2, v1, 12);
-                                                    let v6 = _mm_alignr_epi8(v3, v2, 12);
-                                                    let v7 = _mm_alignr_epi8(v4, v3, 12);
-                                                    let v8 = _mm_alignr_epi8(v5, v4, 12);
-                                                    let v9 = _mm_alignr_epi8(v6, v5, 12);
-                                                    let v10 = _mm_alignr_epi8(v7, v6, 12);
-                                                    let v11 = _mm_alignr_epi8(v8, v7, 12);
-                                                    let v12 = _mm_alignr_epi8(v9, v8, 12);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[
-                                                            v1, v2, v3, v4, v5, v6, v7, v8, v9,
-                                                            v10, v11, v12, v0,
-                                                        ],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                56 => {
-                                                    // LCM(56, 16) = 112.
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(32) as *const __m128i
-                                                    );
-                                                    // Optimize v3 construction to avoid store-forwarding stall.
-                                                    // v3 should be [src[48..56], src[0..8]].
-                                                    // src[0..8] is already in v0[0..8].
-                                                    // We load src[48..56] using loadl_epi64.
-                                                    let v0 = v;
-                                                    let v3_low = _mm_loadl_epi64(
-                                                        src.add(48) as *const __m128i
-                                                    );
-                                                    let v3 = _mm_unpacklo_epi64(v3_low, v0);
-
-                                                    let v4 = _mm_alignr_epi8(v1, v0, 8);
-                                                    let v5 = _mm_alignr_epi8(v2, v1, 8);
-                                                    let v6 = _mm_alignr_epi8(v3, v2, 8);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v4, v5, v6, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                48 => {
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v3 = _mm_loadu_si128(
-                                                        src.add(32) as *const __m128i
-                                                    );
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v2, v3, v],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
-                                                64 => {
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(32) as *const __m128i
-                                                    );
-                                                    let v3 = _mm_loadu_si128(
-                                                        src.add(48) as *const __m128i
-                                                    );
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                60 => decompress_offset_60(out_next, src, v, length),
+                                                44 => decompress_offset_44(out_next, src, v, length),
+                                                36 => decompress_offset_36(out_next, src, v, length),
+                                                52 => decompress_offset_52(out_next, src, v, length),
+                                                56 => decompress_offset_56(out_next, src, v, length),
+                                                48 => decompress_offset_48(out_next, src, v, length),
+                                                64 => decompress_offset_64(out_next, src, v, length),
                                                 16 => {
                                                     decompress_fill_pattern_16(
                                                         out_next, v, src, length,
@@ -857,27 +1011,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
-                                                20 => {
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u32
-                                                    );
-                                                    let v_temp = _mm_cvtsi32_si128(val as i32);
-                                                    let v_align = _mm_slli_si128(v_temp, 12);
-
-                                                    let v0 = v;
-                                                    let v1 = _mm_alignr_epi8(v0, v_align, 12);
-                                                    let v2 = _mm_alignr_epi8(v1, v0, 12);
-                                                    let v3 = _mm_alignr_epi8(v2, v1, 12);
-                                                    let v4 = _mm_alignr_epi8(v3, v2, 12);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v4, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                20 => decompress_offset_20(out_next, src, v, length),
                                                 21 => {
                                                     let val = std::ptr::read_unaligned(
                                                         src.add(16) as *const u64
@@ -939,24 +1073,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
-                                                24 => {
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u64,
-                                                    );
-                                                    let v_tail = _mm_cvtsi64_si128(val as i64);
-
-                                                    let v0 = v;
-                                                    let v1 = _mm_unpacklo_epi64(v_tail, v0);
-                                                    let v2 = _mm_alignr_epi8(v_tail, v0, 8);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                24 => decompress_offset_24(out_next, src, v, length),
                                                 25 => {
                                                     let val = std::ptr::read_unaligned(
                                                         src.add(16) as *const u64
@@ -970,43 +1087,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
-                                                26 => {
-                                                    // LCM(26, 16) = 208. 13 vectors.
-                                                    // The pattern repeats every 26 bytes.
-                                                    // We advance by 16 bytes each step.
-                                                    // Next vector is constructed from the previous two shifted by 16 bytes.
-                                                    // Since 26 % 16 = 10, the relative alignment shifts by 10 bytes each step.
-                                                    // To align, we need to shift right by 16 - 10 = 6 bytes from the concatenated previous vectors.
-                                                    // v_align (src[10..26]) acts as v_{-1}.
-                                                    let v0 = v;
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(10) as *const __m128i
-                                                    );
-
-                                                    let v1 = _mm_alignr_epi8(v0, v_align, 6);
-                                                    let v2 = _mm_alignr_epi8(v1, v0, 6);
-                                                    let v3 = _mm_alignr_epi8(v2, v1, 6);
-                                                    let v4 = _mm_alignr_epi8(v3, v2, 6);
-                                                    let v5 = _mm_alignr_epi8(v4, v3, 6);
-                                                    let v6 = _mm_alignr_epi8(v5, v4, 6);
-                                                    let v7 = _mm_alignr_epi8(v6, v5, 6);
-                                                    let v8 = _mm_alignr_epi8(v7, v6, 6);
-                                                    let v9 = _mm_alignr_epi8(v8, v7, 6);
-                                                    let v10 = _mm_alignr_epi8(v9, v8, 6);
-                                                    let v11 = _mm_alignr_epi8(v10, v9, 6);
-                                                    let v12 = _mm_alignr_epi8(v11, v10, 6);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[
-                                                            v1, v2, v3, v4, v5, v6, v7, v8, v9,
-                                                            v10, v11, v12, v0,
-                                                        ],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                26 => decompress_offset_26(out_next, src, v, length),
                                                 27 => {
                                                     let v_align = _mm_loadu_si128(
                                                         src.add(11) as *const __m128i
@@ -1015,27 +1096,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
-                                                28 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(12) as *const __m128i
-                                                    );
-
-                                                    let v0 = v;
-                                                    let v1 = _mm_alignr_epi8(v0, v_align, 4);
-                                                    let v2 = _mm_alignr_epi8(v1, v0, 4);
-                                                    let v3 = _mm_alignr_epi8(v2, v1, 4);
-                                                    let v4 = _mm_alignr_epi8(v3, v2, 4);
-                                                    let v5 = _mm_alignr_epi8(v4, v3, 4);
-                                                    let v6 = _mm_alignr_epi8(v5, v4, 4);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v4, v5, v6, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                28 => decompress_offset_28(out_next, src, v, length),
                                                 29 => {
                                                     let v_align = _mm_loadu_si128(
                                                         src.add(13) as *const __m128i
@@ -1072,26 +1133,7 @@ pub unsafe fn decompress_bmi2(
                                                         16,
                                                     );
                                                 }
-                                                40 => {
-                                                    let v1 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    let v4 = _mm_loadu_si128(
-                                                        src.add(24) as *const __m128i
-                                                    );
-                                                    let v0 = v;
-
-                                                    let v2 = _mm_alignr_epi8(v0, v4, 8);
-                                                    let v3 = _mm_alignr_epi8(v1, v0, 8);
-
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v1, v2, v3, v4, v0],
-                                                        length,
-                                                        16,
-                                                    );
-                                                }
+                                                40 => decompress_offset_40(out_next, src, v, length),
                                                 _ => {
                                                     let init = std::cmp::min(offset, length);
                                                     std::ptr::copy_nonoverlapping(
