@@ -399,6 +399,50 @@ unsafe fn decompress_offset_cycle4<const SHIFT: i32>(
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_17(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let c = *src.add(16);
+    let v_align = _mm_insert_epi8(v, c as i32, 15);
+    let mut v1 = _mm_alignr_epi8(v, v_align, 15);
+    let mut v0 = v;
+    let mut v2 = _mm_alignr_epi8(v1, v0, 15);
+
+    let mut copied = 16;
+    while copied + 48 <= length {
+        let next_v0 = _mm_alignr_epi8(v1, v0, 14);
+        let next_v1 = _mm_alignr_epi8(v2, v1, 14);
+        let next_v2 = _mm_alignr_epi8(next_v0, v2, 14);
+
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, next_v0);
+
+        v0 = next_v0;
+        v1 = next_v1;
+        v2 = next_v2;
+        copied += 48;
+    }
+
+    while copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        let next = _mm_alignr_epi8(v1, v0, 14);
+        v0 = v1;
+        v1 = v2;
+        v2 = next;
+        copied += 16;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_20(
     out_next: *mut u8,
     src: *const u8,
@@ -982,13 +1026,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, v, src, length,
                                                     );
                                                 }
-                                                17 => {
-                                                    let c = *src.add(16);
-                                                    let v_align = _mm_insert_epi8(v, c as i32, 15);
-                                                    decompress_offset_alignr_cycle::<15>(
-                                                        out_next, src, length, v_align, v,
-                                                    );
-                                                }
+                                                17 => decompress_offset_17(out_next, src, v, length),
                                                 18 => {
                                                     let val = std::ptr::read_unaligned(
                                                         src.add(16) as *const u16,
