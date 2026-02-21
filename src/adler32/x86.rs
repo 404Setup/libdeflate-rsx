@@ -561,11 +561,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         s2 += s1 * 32;
         s1 += s1_part;
 
-        let w_32 = _mm256_set_epi8(
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-            25, 26, 27, 28, 29, 30, 31, 32,
-        );
-        let p = _mm256_maddubs_epi16(d, w_32);
+        // Optimization: reuse hoisted weights constant
+        let p = _mm256_maddubs_epi16(d, weights);
         let s = _mm256_madd_epi16(p, ones_i16);
 
         let s_lo = _mm256_castsi256_si128(s);
