@@ -102,8 +102,8 @@ static OFFSET15_MASKS: [u8; 240] = [
     11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
     10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7,
     8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3,
-    4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
 ];
 
 // LCM(14, 16) = 112. 7 vectors.
@@ -836,10 +836,12 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 18 => {
-                                                    let c1 = *src.add(16);
-                                                    let c2 = *src.add(17);
-                                                    let mut v_align = _mm_insert_epi8(v, c1 as i32, 14);
-                                                    v_align = _mm_insert_epi8(v_align, c2 as i32, 15);
+                                                    let val = std::ptr::read_unaligned(
+                                                        src.add(16) as *const u16,
+                                                    )
+                                                        as i32;
+                                                    let v_temp = _mm_cvtsi32_si128(val);
+                                                    let v_align = _mm_slli_si128(v_temp, 14);
                                                     decompress_offset_alignr_cycle::<14>(
                                                         out_next, src, length, v_align, v,
                                                     );
@@ -938,14 +940,9 @@ pub unsafe fn decompress_bmi2(
                                                     );
                                                 }
                                                 24 => {
-                                                    let v_part1 = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u32,
+                                                    let val = std::ptr::read_unaligned(
+                                                        src.add(16) as *const u64,
                                                     );
-                                                    let v_part2 = std::ptr::read_unaligned(
-                                                        src.add(20) as *const u32,
-                                                    );
-                                                    let val =
-                                                        (v_part1 as u64) | ((v_part2 as u64) << 32);
                                                     let v_tail = _mm_cvtsi64_si128(val as i64);
 
                                                     let v0 = v;
