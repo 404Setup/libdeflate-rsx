@@ -2,6 +2,10 @@
 
 A complete Rust port of libdeflate, without C code.
 
+It's entirely powered by Gemini 3 Pro (the main model) and Gemini 3 Flash, but I had them create extensive unit and
+benchmark tests to ensure accuracy. All features of libdeflate-rs (except CUDA) are automatically enabled based on the
+compile-time environment, requiring no manual configuration.
+
 ## Feature
 
 - Includes streaming processing API

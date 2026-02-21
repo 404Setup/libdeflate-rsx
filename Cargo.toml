@@ -1,10 +1,28 @@
 [package]
 name = "libdeflate"
-version = "1.25.0"
+version = "26.1.0"
+rust-version = "1.95.0"
 edition = "2024"
 authors = ["404"]
 description = "Rust rewrite of libdeflate"
 license = "BSD-3"
+readme = "README.md"
+keywords = [
+    "deflate",
+    "zlib",
+    "gzip",
+    "compression",
+    "decompression",
+]
+categories = ["compression"]
+repository = "https://github.com/404Setup/libdeflate-rs"
+exclude = [
+    ".github/",
+    ".jules/",
+    "bench_data/",
+    ".idea/",
+    "examples/*.rs",
+]
 
 [dependencies]
 rayon = "1.11.0"
@@ -26,11 +44,16 @@ lto = "fat"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
+name = "libdeflate"
+path = "src/lib.rs"
+
+[[example]]
+name = "examples"
+path = "examples/gzip_zlib.rs"
 
 [dev-dependencies]
 criterion = "0.5"
 libdeflater = "1.25.0"
-
 
 [[bench]]
 name = "bench_main"
