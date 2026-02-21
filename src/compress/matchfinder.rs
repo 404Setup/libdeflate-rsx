@@ -91,7 +91,13 @@ pub trait MatchFinderTrait {
     fn reset(&mut self);
     fn prepare(&mut self, len: usize);
     fn advance(&mut self, len: usize);
-    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize);
+    fn find_match(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        nice_len: usize,
+    ) -> (usize, usize);
     fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize);
     fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, max_depth: usize) {
         for i in 0..count {
@@ -103,6 +109,7 @@ pub trait MatchFinderTrait {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize);
 }
@@ -117,8 +124,14 @@ impl MatchFinderTrait for MatchFinder {
     fn advance(&mut self, len: usize) {
         self.advance(len);
     }
-    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
-        self.find_match(data, pos, max_depth)
+    fn find_match(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        nice_len: usize,
+    ) -> (usize, usize) {
+        self.find_match(data, pos, max_depth, nice_len)
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
         self.skip_match(data, pos);
@@ -131,9 +144,10 @@ impl MatchFinderTrait for MatchFinder {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize) {
-        self.find_matches(data, pos, max_depth, matches)
+        self.find_matches(data, pos, max_depth, nice_len, matches)
     }
 }
 
@@ -147,7 +161,13 @@ impl MatchFinderTrait for HtMatchFinder {
     fn advance(&mut self, len: usize) {
         self.advance(len);
     }
-    fn find_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) -> (usize, usize) {
+    fn find_match(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        _max_depth: usize,
+        _nice_len: usize,
+    ) -> (usize, usize) {
         self.find_match(data, pos)
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
@@ -161,6 +181,7 @@ impl MatchFinderTrait for HtMatchFinder {
         data: &[u8],
         pos: usize,
         _max_depth: usize,
+        _nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize) {
         let (len, offset) = self.find_match(data, pos);
@@ -184,8 +205,14 @@ impl MatchFinderTrait for BtMatchFinder {
     fn advance(&mut self, len: usize) {
         self.advance(len);
     }
-    fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
-        self.find_match(data, pos, max_depth)
+    fn find_match(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        nice_len: usize,
+    ) -> (usize, usize) {
+        self.find_match(data, pos, max_depth, nice_len)
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize) {
         let mut matches = Vec::new();
@@ -196,6 +223,7 @@ impl MatchFinderTrait for BtMatchFinder {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize) {
         matches.clear();
@@ -203,7 +231,7 @@ impl MatchFinderTrait for BtMatchFinder {
             data,
             pos,
             DEFLATE_MAX_MATCH_LEN,
-            DEFLATE_MAX_MATCH_LEN,
+            nice_len,
             max_depth,
             matches,
             true,
@@ -682,6 +710,7 @@ impl MatchFinder {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
         mut on_match: F,
     ) -> (usize, usize)
     where
@@ -771,7 +800,7 @@ impl MatchFinder {
                             best_len = len;
                             best_offset = offset;
                             on_match(len, offset);
-                            if len == DEFLATE_MAX_MATCH_LEN {
+                            if len >= nice_len || len == DEFLATE_MAX_MATCH_LEN {
                                 break;
                             }
                         }
@@ -798,7 +827,7 @@ impl MatchFinder {
                             best_len = len;
                             best_offset = offset;
                             on_match(len, offset);
-                            if len == DEFLATE_MAX_MATCH_LEN {
+                            if len >= nice_len || len == DEFLATE_MAX_MATCH_LEN {
                                 break;
                             }
                         }
@@ -824,6 +853,7 @@ impl MatchFinder {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize) {
         matches.clear();
@@ -835,58 +865,58 @@ impl MatchFinder {
         unsafe {
             match self.match_len {
                 MatchLenStrategy::Scalar => {
-                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Sse2 => {
-                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx2 => {
-                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx512 => {
-                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx10 => {
-                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "aarch64")]
                 MatchLenStrategy::Neon => {
-                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
             }
         }
     }
 
-    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
+    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize) -> (usize, usize) {
         let mut on_match = |_: usize, _: usize| {};
         unsafe {
             match self.match_len {
                 MatchLenStrategy::Scalar => {
-                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, ScalarStrategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Sse2 => {
-                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Sse2Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx2 => {
-                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx2Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx512 => {
-                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx512Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx10 => {
-                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, Avx10Strategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
                 #[cfg(target_arch = "aarch64")]
                 MatchLenStrategy::Neon => {
-                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, &mut on_match)
+                    self.find_match_impl::<_, NeonStrategy>(data, pos, max_depth, nice_len, &mut on_match)
                 }
             }
         }
@@ -1153,6 +1183,7 @@ impl BtMatchFinder {
         data: &[u8],
         pos: usize,
         max_depth: usize,
+        nice_len: usize,
     ) -> (usize, usize) {
         if pos.checked_add(4).map_or(true, |end| end > data.len()) {
             return (0, 0);
@@ -1236,7 +1267,7 @@ impl BtMatchFinder {
             if len > best_len {
                 best_len = len;
                 best_offset = abs_pos - p_abs;
-                if len == max_len_clamped {
+                if len >= nice_len || len == max_len_clamped {
                     let children = *self.child_tab.get_unchecked(p_child_idx);
                     (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
                         children[0];
@@ -1273,31 +1304,31 @@ impl BtMatchFinder {
         }
     }
 
-    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize) -> (usize, usize) {
+    pub fn find_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize) -> (usize, usize) {
         unsafe {
             match self.match_len {
                 MatchLenStrategy::Scalar => {
-                    self.find_match_impl::<ScalarStrategy>(data, pos, max_depth)
+                    self.find_match_impl::<ScalarStrategy>(data, pos, max_depth, nice_len)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Sse2 => {
-                    self.find_match_impl::<Sse2Strategy>(data, pos, max_depth)
+                    self.find_match_impl::<Sse2Strategy>(data, pos, max_depth, nice_len)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx2 => {
-                    self.find_match_impl::<Avx2Strategy>(data, pos, max_depth)
+                    self.find_match_impl::<Avx2Strategy>(data, pos, max_depth, nice_len)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx512 => {
-                    self.find_match_impl::<Avx512Strategy>(data, pos, max_depth)
+                    self.find_match_impl::<Avx512Strategy>(data, pos, max_depth, nice_len)
                 }
                 #[cfg(target_arch = "x86_64")]
                 MatchLenStrategy::Avx10 => {
-                    self.find_match_impl::<Avx10Strategy>(data, pos, max_depth)
+                    self.find_match_impl::<Avx10Strategy>(data, pos, max_depth, nice_len)
                 }
                 #[cfg(target_arch = "aarch64")]
                 MatchLenStrategy::Neon => {
-                    self.find_match_impl::<NeonStrategy>(data, pos, max_depth)
+                    self.find_match_impl::<NeonStrategy>(data, pos, max_depth, nice_len)
                 }
             }
         }
@@ -1525,14 +1556,14 @@ mod tests {
         let mut matches = Vec::new();
 
         for i in 0..5 {
-            mf1.find_match(data, i, max_depth);
+            mf1.find_match(data, i, max_depth, 258);
 
-            mf2.find_match(data, i, max_depth);
+            mf2.find_match(data, i, max_depth, 258);
         }
 
-        let (len1, offset1) = mf1.find_match(data, 5, max_depth);
+        let (len1, offset1) = mf1.find_match(data, 5, max_depth, 258);
 
-        let (len2, offset2) = mf2.find_matches(data, 5, max_depth, &mut matches);
+        let (len2, offset2) = mf2.find_matches(data, 5, max_depth, 258, &mut matches);
 
         assert_eq!(len1, len2, "Lengths should match");
         assert_eq!(offset1, offset2, "Offsets should match");

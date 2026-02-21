@@ -700,7 +700,7 @@ impl Compressor {
             {
                 break;
             }
-            let (len, offset) = mf.find_match(input, p, self.max_search_depth);
+            let (len, offset) = mf.find_match(input, p, self.max_search_depth, self.nice_match_length);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
                 p += len;
@@ -722,7 +722,12 @@ impl Compressor {
         mf.reset();
 
         while cur_in_idx < block_input.len() {
-            let (len, offset) = mf.find_match(block_input, cur_in_idx, self.max_search_depth);
+            let (len, offset) = mf.find_match(
+                block_input,
+                cur_in_idx,
+                self.max_search_depth,
+                self.nice_match_length,
+            );
             if len >= 3 {
                 self.sequences.push(Sequence {
                     litrunlen: 0,
@@ -787,7 +792,13 @@ impl Compressor {
                 };
             }
 
-            mf.find_matches(block_input, pos, self.max_search_depth, &mut matches);
+            mf.find_matches(
+                block_input,
+                pos,
+                self.max_search_depth,
+                self.nice_match_length,
+                &mut matches,
+            );
             let mut best_len = 0;
             for &(len, offset) in &matches {
                 let len = len as usize;
@@ -896,12 +907,17 @@ impl Compressor {
                 break;
             }
 
-            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+            let (len, offset) =
+                mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
 
             if len >= 3 {
                 if lazy_depth >= 1 && in_idx + 1 < input.len() {
-                    let (_next_len, _next_offset) =
-                        mf.find_match(input, in_idx + 1, self.max_search_depth);
+                    let (_next_len, _next_offset) = mf.find_match(
+                        input,
+                        in_idx + 1,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                 }
 
                 self.split_stats.observe_match(len, offset);
@@ -1062,17 +1078,26 @@ impl Compressor {
                 break;
             }
 
-            let (mut len, mut offset) = mf.find_match(input, in_idx, self.max_search_depth);
+            let (mut len, mut offset) =
+                mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
 
             if len >= 3 {
                 let mut skipped = 0;
                 if lazy_depth >= 1 && in_idx + 1 < input.len() {
-                    let (next_len, next_offset) =
-                        mf.find_match(input, in_idx + 1, self.max_search_depth);
+                    let (next_len, next_offset) = mf.find_match(
+                        input,
+                        in_idx + 1,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                     if next_len > len {
                         if lazy_depth >= 2 && in_idx + 2 < input.len() {
-                            let (next2_len, next2_offset) =
-                                mf.find_match(input, in_idx + 2, self.max_search_depth);
+                            let (next2_len, next2_offset) = mf.find_match(
+                                input,
+                                in_idx + 2,
+                                self.max_search_depth,
+                                self.nice_match_length,
+                            );
                             if next2_len > next_len {
                                 self.split_stats.observe_literal(input[in_idx]);
                                 self.litlen_freqs[input[in_idx] as usize] += 1;
@@ -1329,7 +1354,8 @@ impl Compressor {
 
         if input.len() <= 65536 {
             while in_idx < input.len() {
-                let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+                let (len, offset) =
+                    mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
                 if len >= 3 {
                     self.sequences.push(Sequence::new(
                         litrunlen,
@@ -1354,7 +1380,8 @@ impl Compressor {
                 {
                     break;
                 }
-                let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+                let (len, offset) =
+                    mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
                 if len >= 3 {
                     self.split_stats.observe_match(len, offset);
                     self.sequences.push(Sequence::new(
@@ -1454,7 +1481,8 @@ impl Compressor {
             {
                 break;
             }
-            let (len, offset) = mf.find_match(input, in_idx, self.max_search_depth);
+            let (len, offset) =
+                mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
                 mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
@@ -1478,7 +1506,12 @@ impl Compressor {
         mf.reset();
 
         while cur_in_idx < block_input.len() {
-            let (len, offset) = mf.find_match(block_input, cur_in_idx, self.max_search_depth);
+            let (len, offset) = mf.find_match(
+                block_input,
+                cur_in_idx,
+                self.max_search_depth,
+                self.nice_match_length,
+            );
             if len >= 3 {
                 let off_slot = self.get_offset_slot(offset);
                 self.sequences.push(Sequence::new(
@@ -1549,7 +1582,13 @@ impl Compressor {
                 };
             }
 
-            mf.find_matches(block_input, pos, self.max_search_depth, &mut matches);
+            mf.find_matches(
+                block_input,
+                pos,
+                self.max_search_depth,
+                self.nice_match_length,
+                &mut matches,
+            );
             let mut best_len = 0;
             for &(len, offset) in &matches {
                 let len = len as usize;
