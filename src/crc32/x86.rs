@@ -252,10 +252,10 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 len &= 15;
             }
         } else {
-            let mut v0 = _mm512_zextsi128_si512(_mm_xor_si128(
-                _mm_loadu_si128(data.as_ptr() as *const __m128i),
-                x0,
-            ));
+            let mut v0 = _mm512_xor_si512(
+                _mm512_loadu_si512(data.as_ptr() as *const _),
+                _mm512_zextsi128_si512(x0),
+            );
             if len >= 128 {
                 let mut v1 = _mm512_loadu_si512(data.as_ptr().add(64) as *const _);
                 let mults_1v = _mm512_set_epi64(
@@ -395,11 +395,10 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
             v0 = _mm512_zextsi128_si512(x0);
             v0 = _mm512_xor_si512(_mm512_load_si512(data.as_ptr() as *const _), v0);
         } else {
-            v0 = _mm512_zextsi128_si512(_mm_xor_si128(
-                _mm_loadu_si128(data.as_ptr() as *const __m128i),
-                x0,
-            ));
-            v0 = _mm512_xor_si512(_mm512_loadu_si512(data.as_ptr().add(16) as *const _), v0);
+            v0 = _mm512_xor_si512(
+                _mm512_loadu_si512(data.as_ptr() as *const _),
+                _mm512_zextsi128_si512(x0),
+            );
         }
 
         let mut v1 = _mm512_loadu_si512(data.as_ptr().add(64) as *const _);
