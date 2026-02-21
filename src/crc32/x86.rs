@@ -15,6 +15,7 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
     }
 
     let mults_128b = _mm_set_epi64x(CRC32_X95_MODG as i64, CRC32_X159_MODG as i64);
+    let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
     let barrett_reduction_constants = _mm_set_epi64x(
         CRC32_BARRETT_CONSTANT_2 as i64,
         CRC32_BARRETT_CONSTANT_1 as i64,
@@ -144,7 +145,6 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
             len -= 64;
         }
 
-        let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
         let x0_new = fold_vec128(x0, x2, mults_256b);
         let x1_new = fold_vec128(x1, x3, mults_256b);
         x0 = fold_vec128(x0_new, x1_new, mults_128b);
@@ -155,7 +155,6 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
             let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
             x0 = _mm_xor_si128(x0, v0);
 
-            let mults_256b = _mm_set_epi64x(CRC32_X223_MODG as i64, CRC32_X287_MODG as i64);
             let t1 = fold_vec128(x0, v2, mults_256b);
             x0 = fold_vec128(v1, t1, mults_128b);
 
@@ -169,7 +168,23 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
         }
     }
 
-    while len >= 16 {
+    if len >= 32 {
+        while len >= 32 {
+            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+
+            // Optimization: Parallelize folding for 32-byte chunks to break dependency chains.
+            // We compute fold_32(x0) and fold_16(v0) ^ v1 in parallel.
+            let t1 = fold_vec128(x0, _mm_setzero_si128(), mults_256b);
+            let t2 = fold_vec128(v0, v1, mults_128b);
+            x0 = _mm_xor_si128(t1, t2);
+
+            data = &data[32..];
+            len -= 32;
+        }
+    }
+
+    if len >= 16 {
         let v_data = _mm_loadu_si128(data.as_ptr() as *const __m128i);
 
         let x0_low = _mm_clmulepi64_si128(x0, mults_128b, 0x00);
