@@ -1914,6 +1914,7 @@ fn bench_decompress_offset62_micro(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_crc32_large,
     bench_bitstream_micro,
     bench_compress_micro,
     bench_decompress_offset10_micro,
@@ -2441,6 +2442,25 @@ fn bench_decompress_offset50_micro(c: &mut Criterion) {
                 .decompress_deflate_into(&compressed_data[..compressed_size], &mut out_buf)
                 .unwrap_or(0)
         });
+    });
+
+    group.finish();
+}
+
+fn bench_crc32_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("CRC32 Large");
+    // 16MB buffer to stress memory bandwidth and vector processing
+    let size = 16 * 1024 * 1024;
+    let data = vec![0u8; size];
+
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input(BenchmarkId::new("libdeflate-rs", size), &size, |b, &_size| {
+        b.iter(|| crc32(0, &data));
+    });
+
+    group.bench_with_input(BenchmarkId::new("libdeflater", size), &size, |b, &_size| {
+        b.iter(|| libdeflater::crc32(&data));
     });
 
     group.finish();

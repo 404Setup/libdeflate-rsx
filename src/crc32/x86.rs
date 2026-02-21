@@ -235,13 +235,13 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
             } else {
                 x0 = _mm_xor_si128(_mm_loadu_si128(data.as_ptr() as *const __m128i), x0);
                 if len >= 32 {
-                    x0 = fold_vec128(
+                    x0 = fold_vec128_avx512(
                         x0,
                         _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i),
                         mults_128b,
                     );
                     if len >= 48 {
-                        x0 = fold_vec128(
+                        x0 = fold_vec128_avx512(
                             x0,
                             _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i),
                             mults_128b,
@@ -251,7 +251,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 data = &data[len & !15..];
                 len &= 15;
                 if len > 0 {
-                    x0 = fold_lessthan16bytes(x0, data, len, mults_128b);
+                    x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
                 }
             }
         } else {
@@ -344,13 +344,13 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 CRC32_X223_MODG as i64,
                 CRC32_X287_MODG as i64,
             );
-            let mut y0 = fold_vec256(
+            let mut y0 = fold_vec256_avx512(
                 _mm512_extracti64x4_epi64(v0, 0),
                 _mm512_extracti64x4_epi64(v0, 1),
                 mults_256b,
             );
             if len >= 32 {
-                y0 = fold_vec256(
+                y0 = fold_vec256_avx512(
                     y0,
                     _mm256_loadu_si256(data.as_ptr() as *const _),
                     mults_256b,
@@ -358,18 +358,18 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 data = &data[32..];
                 len -= 32;
             }
-            x0 = fold_vec128(
+            x0 = fold_vec128_avx512(
                 _mm256_extracti128_si256(y0, 0),
                 _mm256_extracti128_si256(y0, 1),
                 mults_128b,
             );
             if len >= 16 {
-                x0 = fold_vec128(x0, _mm_loadu_si128(data.as_ptr() as *const _), mults_128b);
+                x0 = fold_vec128_avx512(x0, _mm_loadu_si128(data.as_ptr() as *const _), mults_128b);
                 data = &data[16..];
                 len -= 16;
             }
             if len > 0 {
-                x0 = fold_lessthan16bytes(x0, data, len, mults_128b);
+                x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
             }
         }
     } else {
@@ -385,12 +385,12 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
             let mut align_rem = align;
             if (align_rem & 15) != 0 {
                 let chunk = align_rem & 15;
-                x0 = fold_lessthan16bytes(x0, data, chunk, mults_128b);
+                x0 = fold_lessthan16bytes_avx512(x0, data, chunk, mults_128b);
                 data = &data[chunk..];
                 align_rem &= !15;
             }
             while align_rem > 0 {
-                x0 = fold_vec128(
+                x0 = fold_vec128_avx512(
                     x0,
                     _mm_loadu_si128(data.as_ptr() as *const __m128i),
                     mults_128b,
@@ -557,13 +557,13 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
             CRC32_X223_MODG as i64,
             CRC32_X287_MODG as i64,
         );
-        let mut y0 = fold_vec256(
+        let mut y0 = fold_vec256_avx512(
             _mm512_extracti64x4_epi64(v0, 0),
             _mm512_extracti64x4_epi64(v0, 1),
             mults_256b,
         );
         if len >= 32 {
-            y0 = fold_vec256(
+            y0 = fold_vec256_avx512(
                 y0,
                 _mm256_loadu_si256(data.as_ptr() as *const _),
                 mults_256b,
@@ -571,18 +571,18 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
             data = &data[32..];
             len -= 32;
         }
-        x0 = fold_vec128(
+        x0 = fold_vec128_avx512(
             _mm256_extracti128_si256(y0, 0),
             _mm256_extracti128_si256(y0, 1),
             mults_128b,
         );
         if len >= 16 {
-            x0 = fold_vec128(x0, _mm_loadu_si128(data.as_ptr() as *const _), mults_128b);
+            x0 = fold_vec128_avx512(x0, _mm_loadu_si128(data.as_ptr() as *const _), mults_128b);
             data = &data[16..];
             len -= 16;
         }
         if len > 0 {
-            x0 = fold_lessthan16bytes(x0, data, len, mults_128b);
+            x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
         }
     }
 
@@ -883,8 +883,32 @@ unsafe fn fold_vec512(dst: __m512i, src: __m512i, mults: __m512i) -> __m512i {
     )
 }
 
+
 #[cfg(target_arch = "x86_64")]
-unsafe fn fold_lessthan16bytes(x: __m128i, p: &[u8], len: usize, mults: __m128i) -> __m128i {
+#[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
+unsafe fn fold_vec128_avx512(dst: __m128i, src: __m128i, mults: __m128i) -> __m128i {
+    _mm_ternarylogic_epi32(
+        _mm_clmulepi64_si128(dst, mults, 0x00),
+        _mm_clmulepi64_si128(dst, mults, 0x11),
+        src,
+        0x96,
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
+unsafe fn fold_vec256_avx512(dst: __m256i, src: __m256i, mults: __m256i) -> __m256i {
+    _mm256_ternarylogic_epi32(
+        _mm256_clmulepi64_epi128(dst, mults, 0x00),
+        _mm256_clmulepi64_epi128(dst, mults, 0x11),
+        src,
+        0x96,
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
+unsafe fn fold_lessthan16bytes_avx512(x: __m128i, p: &[u8], len: usize, mults: __m128i) -> __m128i {
     let shift_tab = [
         0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
@@ -900,5 +924,5 @@ unsafe fn fold_lessthan16bytes(x: __m128i, p: &[u8], len: usize, mults: __m128i)
         _mm_loadu_si128(p.as_ptr().offset((len as isize) - 16) as *const __m128i),
         rshift,
     );
-    fold_vec128(x0, x1, mults)
+    fold_vec128_avx512(x0, x1, mults)
 }
