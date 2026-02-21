@@ -824,10 +824,12 @@ unsafe fn decompress_offset_60(
 ) {
     let v1 = _mm_loadu_si128(src.add(16) as *const __m128i);
     let v2 = _mm_loadu_si128(src.add(32) as *const __m128i);
-    let v3_raw = _mm_loadu_si128(src.add(48) as *const __m128i);
+    // Optimization: Load from src + 44 instead of src + 48 to avoid STLF stalls.
+    // src + 48 overlaps with the recently written v0 (at offset 0) by 4 bytes.
+    // src + 44 (offset -16) is fully contained in previously written data.
+    let v_safe = _mm_loadu_si128(src.add(44) as *const __m128i);
     let v0 = v;
-    let v0_shifted = _mm_slli_si128(v0, 12);
-    let v3 = _mm_blend_epi16(v3_raw, v0_shifted, 0xC0);
+    let v3 = _mm_alignr_epi8(v0, v_safe, 4);
 
     let v4 = _mm_alignr_epi8(v1, v0, 4);
     let v5 = _mm_alignr_epi8(v2, v1, 4);
