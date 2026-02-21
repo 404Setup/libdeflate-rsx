@@ -265,6 +265,24 @@ unsafe fn decompress_offset_alignr_cycle<const SHIFT: i32>(
     mut v_prev: __m128i,
 ) {
     let mut copied = 16;
+    while copied + 64 <= length {
+        let v_next0 = _mm_alignr_epi8::<SHIFT>(v_prev, v_align);
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_next0);
+
+        let v_next1 = _mm_alignr_epi8::<SHIFT>(v_next0, v_prev);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_next1);
+
+        let v_next2 = _mm_alignr_epi8::<SHIFT>(v_next1, v_next0);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_next2);
+
+        let v_next3 = _mm_alignr_epi8::<SHIFT>(v_next2, v_next1);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v_next3);
+
+        v_align = v_next2;
+        v_prev = v_next3;
+        copied += 64;
+    }
+
     while copied + 16 <= length {
         let v_next = _mm_alignr_epi8::<SHIFT>(v_prev, v_align);
         _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_next);
