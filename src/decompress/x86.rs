@@ -1131,41 +1131,39 @@ pub unsafe fn decompress_bmi2(
                                                 }
                                                 20 => decompress_offset_20(out_next, src, v, length),
                                                 21 => {
+                                                    // Optimization: Load from src + 13 (out - 8) instead of src + 16 (out - 5).
+                                                    // src + 16 overlaps with the recent store at out (range [0, 3)), causing STLF stall.
+                                                    // src + 13 is out - 8, reading [-8, 0), which is safe from STLF.
                                                     let val = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u64
+                                                        src.add(13) as *const u64
                                                     );
-                                                    let v_temp = _mm_cvtsi64_si128(val as i64);
+                                                    // Shift right by 3 bytes (24 bits) to align byte 3 (from src+16) to pos 0.
+                                                    let v_temp = _mm_cvtsi64_si128((val >> 24) as i64);
                                                     let v_align = _mm_slli_si128(v_temp, 11);
                                                     decompress_offset_alignr_cycle::<11>(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
                                                 22 => {
-                                                    let v_align_low = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u32,
+                                                    // Optimization: Use single u64 load from out - 8 (src + 14) to avoid STLF
+                                                    // and reduce instruction count compared to u32 + u16.
+                                                    let val = std::ptr::read_unaligned(
+                                                        src.add(14) as *const u64
                                                     );
-                                                    let v_align_high = std::ptr::read_unaligned(
-                                                        src.add(20) as *const u16,
-                                                    );
-                                                    let v_align_val = (v_align_low as u64)
-                                                        | ((v_align_high as u64) << 32);
-                                                    let v_tail = _mm_slli_si128(
-                                                        _mm_cvtsi64_si128(v_align_val as i64),
-                                                        10,
-                                                    );
+                                                    // Shift right by 2 bytes (16 bits) to align byte 2 (from src+16) to pos 0.
+                                                    let v_temp = _mm_cvtsi64_si128((val >> 16) as i64);
+                                                    let v_tail = _mm_slli_si128(v_temp, 10);
                                                     decompress_offset_alignr_cycle::<10>(
                                                         out_next, src, length, v_tail, v,
                                                     );
                                                 }
                                                 23 => {
-                                                    let v0 = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u32
+                                                    // Optimization: Use single u64 load from out - 8 (src + 15).
+                                                    let val = std::ptr::read_unaligned(
+                                                        src.add(15) as *const u64
                                                     );
-                                                    let v1 = std::ptr::read_unaligned(
-                                                        src.add(19) as *const u32
-                                                    );
-                                                    let val = (v0 as u64) | ((v1 as u64) << 24);
-                                                    let v_temp = _mm_cvtsi64_si128(val as i64);
+                                                    // Shift right by 1 byte (8 bits).
+                                                    let v_temp = _mm_cvtsi64_si128((val >> 8) as i64);
                                                     let v_align = _mm_slli_si128(v_temp, 9);
                                                     decompress_offset_alignr_cycle::<9>(
                                                         out_next, src, length, v_align, v,
