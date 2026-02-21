@@ -833,6 +833,47 @@ fn test_offset_34_pattern() {
 }
 
 #[test]
+fn test_offset_33_pattern() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // Pattern length 33. Offset 33.
+    // Use unique bytes to ensure no internal matches.
+    let pattern: Vec<u8> = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456"
+        .iter()
+        .cloned()
+        .cycle()
+        .take(10000)
+        .collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
+fn test_offset_37_pattern() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // Pattern length 37. Offset 37.
+    let pattern: Vec<u8> = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789a"
+        .iter()
+        .cloned()
+        .cycle()
+        .take(10000)
+        .collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
 fn test_offset_46_pattern() {
     let mut compressor = Compressor::new(6).unwrap();
     let mut decompressor = Decompressor::new();
@@ -840,6 +881,26 @@ fn test_offset_46_pattern() {
     // Pattern length 46. Offset 46.
     // Use unique bytes to ensure no internal matches.
     let pattern: Vec<u8> = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij"
+        .iter()
+        .cloned()
+        .cycle()
+        .take(10000)
+        .collect();
+    let compressed = compressor.compress_deflate(&pattern).unwrap();
+
+    let decompressed = decompressor
+        .decompress_deflate(&compressed, pattern.len())
+        .unwrap();
+    assert_eq!(decompressed, pattern);
+}
+
+#[test]
+fn test_offset_49_pattern() {
+    let mut compressor = Compressor::new(6).unwrap();
+    let mut decompressor = Decompressor::new();
+
+    // Pattern length 49. Offset 49.
+    let pattern: Vec<u8> = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklm"
         .iter()
         .cloned()
         .cycle()
