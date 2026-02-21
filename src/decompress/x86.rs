@@ -580,6 +580,45 @@ unsafe fn decompress_offset_24(
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_30(
+    out_next: *mut u8,
+    src: *const u8,
+    v: __m128i,
+    length: usize,
+) {
+    let v_align = _mm_loadu_si128(src.add(14) as *const __m128i);
+    let v0 = v;
+    let v1 = _mm_alignr_epi8(v0, v_align, 2);
+    let v0_sh = _mm_srli_si128(v0, 2);
+
+    // Optimized parallel computation: Even vectors from (v1, v0), Odd from (v0_sh, v1)
+    let v2 = _mm_alignr_epi8(v1, v0, 2);
+    let v3 = _mm_alignr_epi8(v0_sh, v1, 2);
+    let v4 = _mm_alignr_epi8(v1, v0, 4);
+    let v5 = _mm_alignr_epi8(v0_sh, v1, 4);
+    let v6 = _mm_alignr_epi8(v1, v0, 6);
+    let v7 = _mm_alignr_epi8(v0_sh, v1, 6);
+    let v8 = _mm_alignr_epi8(v1, v0, 8);
+    let v9 = _mm_alignr_epi8(v0_sh, v1, 8);
+    let v10 = _mm_alignr_epi8(v1, v0, 10);
+    let v11 = _mm_alignr_epi8(v0_sh, v1, 10);
+    let v12 = _mm_alignr_epi8(v1, v0, 12);
+    let v13 = _mm_alignr_epi8(v0_sh, v1, 12);
+    let v14 = v_align;
+
+    decompress_write_cycle_vectors(
+        out_next,
+        src,
+        &[
+            v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v0,
+        ],
+        length,
+        16,
+    );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_28(
     out_next: *mut u8,
     src: *const u8,
@@ -1169,14 +1208,7 @@ pub unsafe fn decompress_bmi2(
                                                         out_next, src, length, v_align, v,
                                                     );
                                                 }
-                                                30 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(14) as *const __m128i
-                                                    );
-                                                    decompress_offset_alignr_cycle::<2>(
-                                                        out_next, src, length, v_align, v,
-                                                    );
-                                                }
+                                                30 => decompress_offset_30(out_next, src, v, length),
                                                 31 => {
                                                     let v_align = _mm_loadu_si128(
                                                         src.add(15) as *const __m128i
