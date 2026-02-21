@@ -1200,14 +1200,16 @@ pub(crate) unsafe fn prepare_pattern(offset: usize, src_ptr: *const u8) -> u64 {
                 w | (w << 32)
             }
             5 => {
-                let val = (src_ptr as *const u64).read_unaligned();
-                let p = val.to_le() & 0xFFFFFFFFFF;
+                let val = (src_ptr as *const u32).read_unaligned();
+                let val8 = *src_ptr.add(4);
+                let p = (u32::from_le(val) as u64) | ((val8 as u64) << 32);
                 let p_le = p | (p << 40);
                 u64::from_le(p_le)
             }
             6 => {
-                let val = (src_ptr as *const u64).read_unaligned();
-                let p = val.to_le() & 0xFFFFFFFFFFFF;
+                let val = (src_ptr as *const u32).read_unaligned();
+                let val16 = (src_ptr.add(4) as *const u16).read_unaligned();
+                let p = (u32::from_le(val) as u64) | ((u16::from_le(val16) as u64) << 32);
                 let p_le = p | (p << 48);
                 u64::from_le(p_le)
             }
@@ -1408,3 +1410,5 @@ fn build_decode_table(
         }
     }
 }
+#[cfg(test)]
+mod test_oob;
