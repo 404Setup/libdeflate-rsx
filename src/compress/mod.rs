@@ -61,6 +61,28 @@ const OFFSET_EXTRA_BITS_TABLE: [u8; 30] = [
     13,
 ];
 
+// Precomputed table for get_offset_slot to avoid bitwise operations in the hot loop.
+// This significantly speeds up Level 10+ optimal parsing where this function is called frequently.
+// The table covers the standard DEFLATE window size (32KB).
+// Logic matches the runtime calculation:
+// slot = if offset <= 2 { offset - 1 } else { 2 * bsr(offset-1) + ((offset-1) >> bsr(offset-1)) & 1 }
+const OFFSET_SLOT_TABLE: [u8; 32769] = {
+    let mut table = [0; 32769];
+    let mut offset: usize = 1;
+    while offset <= 32768 {
+        let slot = if offset <= 2 {
+            offset - 1
+        } else {
+            let off = (offset - 1) as u32;
+            let l = 31 - off.leading_zeros();
+            ((2 * l) + ((off >> (l - 1)) & 1)) as usize
+        };
+        table[offset] = slot as u8;
+        offset += 1;
+    }
+    table
+};
+
 pub const MAX_LITLEN_CODEWORD_LEN: usize = 14;
 pub const MAX_OFFSET_CODEWORD_LEN: usize = 15;
 pub const MAX_PRE_CODEWORD_LEN: usize = 7;
@@ -1849,9 +1871,11 @@ impl Compressor {
     }
 
     fn get_offset_slot(&self, offset: usize) -> usize {
-        if offset <= 2 {
-            offset - 1
+        if offset < OFFSET_SLOT_TABLE.len() {
+            // SAFETY: Bounds check is performed above.
+            unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset) as usize }
         } else {
+            // Fallback for offsets > 32768 (rare/non-standard).
             let off = (offset - 1) as u32;
             let l = bsr32(off);
             ((2 * l) + ((off >> (l - 1)) & 1)) as usize
