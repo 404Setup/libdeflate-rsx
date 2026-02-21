@@ -127,7 +127,7 @@ static OFFSET13_MASKS: [u8; 208] = [
 ];
 
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+#[inline(always)]
 unsafe fn decompress_shuffle_pattern<const N: usize>(
     out_next: *mut u8,
     src: *const u8,
@@ -138,29 +138,26 @@ unsafe fn decompress_shuffle_pattern<const N: usize>(
     if length >= 16 {
         let v_src = _mm_loadu_si128(src as *const __m128i);
         let masks_ptr = masks.as_ptr() as *const __m128i;
-        let v_base = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr));
+
+        let mut vectors = [_mm_setzero_si128(); N];
+        for i in 0..N {
+            vectors[i] = _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(i)));
+        }
+
         let stride = N * 16;
 
         while copied + stride <= length {
-            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_base);
-            for i in 1..N {
-                _mm_storeu_si128(
-                    out_next.add(copied + i * 16) as *mut __m128i,
-                    _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(i))),
-                );
+            for i in 0..N {
+                _mm_storeu_si128(out_next.add(copied + i * 16) as *mut __m128i, vectors[i]);
             }
             copied += stride;
         }
 
+        let mut idx = 0;
         while copied + 16 <= length {
-            let idx = (copied % stride) / 16;
-            let v = if idx == 0 {
-                v_base
-            } else {
-                _mm_shuffle_epi8(v_src, _mm_loadu_si128(masks_ptr.add(idx)))
-            };
-            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v);
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, vectors[idx]);
             copied += 16;
+            idx += 1;
         }
     }
 
