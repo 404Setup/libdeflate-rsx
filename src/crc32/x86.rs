@@ -250,9 +250,6 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 }
                 data = &data[len & !15..];
                 len &= 15;
-                if len > 0 {
-                    x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
-                }
             }
         } else {
             let mut v0 = _mm512_zextsi128_si512(_mm_xor_si128(
@@ -367,9 +364,6 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
                 x0 = fold_vec128_avx512(x0, _mm_loadu_si128(data.as_ptr() as *const _), mults_128b);
                 data = &data[16..];
                 len -= 16;
-            }
-            if len > 0 {
-                x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
             }
         }
     } else {
