@@ -602,14 +602,29 @@ pub unsafe fn decompress_bmi2(
                                         } else {
                                             match offset {
                                                 34 => decompress_offset_cycle3::<14>(out_next, src, v, length),
+                                                33 => decompress_offset_cycle3::<15>(out_next, src, v, length),
                                                 35 => decompress_offset_cycle3::<13>(out_next, src, v, length),
+                                                37 => decompress_offset_cycle3::<11>(out_next, src, v, length),
                                                 38 => decompress_offset_cycle3::<10>(out_next, src, v, length),
+                                                39 => decompress_offset_cycle3::<9>(out_next, src, v, length),
+                                                41 => decompress_offset_cycle3::<7>(out_next, src, v, length),
                                                 42 => decompress_offset_cycle3::<6>(out_next, src, v, length),
+                                                43 => decompress_offset_cycle3::<5>(out_next, src, v, length),
+                                                45 => decompress_offset_cycle3::<3>(out_next, src, v, length),
                                                 46 => decompress_offset_cycle3::<2>(out_next, src, v, length),
+                                                47 => decompress_offset_cycle3::<1>(out_next, src, v, length),
+                                                49 => decompress_offset_cycle4::<15>(out_next, src, v, length),
                                                 50 => decompress_offset_cycle4::<14>(out_next, src, v, length),
+                                                51 => decompress_offset_cycle4::<13>(out_next, src, v, length),
+                                                53 => decompress_offset_cycle4::<11>(out_next, src, v, length),
                                                 54 => decompress_offset_cycle4::<10>(out_next, src, v, length),
+                                                55 => decompress_offset_cycle4::<9>(out_next, src, v, length),
+                                                57 => decompress_offset_cycle4::<7>(out_next, src, v, length),
                                                 58 => decompress_offset_cycle4::<6>(out_next, src, v, length),
+                                                59 => decompress_offset_cycle4::<5>(out_next, src, v, length),
+                                                61 => decompress_offset_cycle4::<3>(out_next, src, v, length),
                                                 62 => decompress_offset_cycle4::<2>(out_next, src, v, length),
+                                                63 => decompress_offset_cycle4::<1>(out_next, src, v, length),
                                                 60 => {
                                                     let v1 = _mm_loadu_si128(
                                                         src.add(16) as *const __m128i
