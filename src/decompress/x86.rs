@@ -93,19 +93,6 @@ static OFFSET11_MASKS: [u8; 176] = [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
 ];
 
-// LCM(15, 16) = 240. 15 vectors.
-static OFFSET15_MASKS: [u8; 240] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-    14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-    13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-    12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7,
-    8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-];
-
 // LCM(14, 16) = 112. 7 vectors.
 static OFFSET14_MASKS: [u8; 112] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0,
@@ -535,6 +522,41 @@ unsafe fn decompress_offset_cycle4<const SHIFT: i32>(
         v1 = next_v1;
         v2 = next_v2;
         v3 = next_v3;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
+}
+
+// Optimization: Specialized implementation for offset 15.
+// The pattern has length 15. We construct a 16-byte vector [P0...P14, P0]
+// using a single insert instruction. This vector allows us to write 16 bytes
+// at a time with a stride of 15 bytes, effectively rotating the pattern by 1 byte
+// each iteration without complex shuffles or register pressure.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_15(
+    out_next: *mut u8,
+    src: *const u8,
+    length: usize,
+) {
+    let v_raw = _mm_loadu_si128(src as *const __m128i);
+    let p0 = _mm_cvtsi128_si32(v_raw);
+    let v_pat = _mm_insert_epi8::<15>(v_raw, p0);
+
+    let mut copied = 0;
+    while copied + 64 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
+        copied += 60;
+    }
+
+    while copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+        copied += 15;
     }
 
     if copied < length {
@@ -1419,10 +1441,9 @@ pub unsafe fn decompress_bmi2(
                                             );
                                         }
                                         15 => {
-                                            decompress_shuffle_pattern::<15>(
+                                            decompress_offset_15(
                                                 out_next,
                                                 src,
-                                                &OFFSET15_MASKS,
                                                 length,
                                             );
                                         }
