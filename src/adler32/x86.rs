@@ -6,6 +6,38 @@ use core::arch::x86_64::*;
 const DIVISOR: u32 = 65521;
 const BLOCK_SIZE: usize = 2048;
 
+macro_rules! adler32_chunk8 {
+    ($s1:expr, $s2:expr, $ptr:expr, $len:expr) => {
+        let v = ($ptr as *const u64).read_unaligned();
+        let v_lo = v as u32;
+        let v_hi = (v >> 32) as u32;
+
+        let b0 = v_lo & 0xFF;
+        let b1 = (v_lo >> 8) & 0xFF;
+        let b2 = (v_lo >> 16) & 0xFF;
+        let b3 = (v_lo >> 24);
+
+        let b4 = v_hi & 0xFF;
+        let b5 = (v_hi >> 8) & 0xFF;
+        let b6 = (v_hi >> 16) & 0xFF;
+        let b7 = (v_hi >> 24);
+
+        $s2 += ($s1 << 3)
+            + (b0 << 3)
+            + (b1.wrapping_mul(7))
+            + (b2.wrapping_mul(6))
+            + (b3.wrapping_mul(5))
+            + (b4 << 2)
+            + (b5.wrapping_mul(3))
+            + (b6 << 1)
+            + b7;
+        $s1 += b0 + b1 + b2 + b3 + b4 + b5 + b6 + b7;
+
+        $ptr = $ptr.add(8);
+        $len -= 8;
+    };
+}
+
 // Optimization: Manual loop unrolling for Adler32 tail processing.
 // This processes 4 bytes per iteration to reduce loop overhead and improve instruction pipelining.
 // It is significantly faster than a scalar iterator loop for small tails (e.g., 15-63 bytes).
@@ -18,33 +50,7 @@ macro_rules! adler32_tail {
         // We know len < 16 here because larger chunks are handled by SIMD or unrolled loops before calling this macro.
         if $len > 0 {
             if $len >= 8 {
-                let v = ($ptr as *const u64).read_unaligned();
-                let v_lo = v as u32;
-                let v_hi = (v >> 32) as u32;
-
-                let b0 = v_lo & 0xFF;
-                let b1 = (v_lo >> 8) & 0xFF;
-                let b2 = (v_lo >> 16) & 0xFF;
-                let b3 = (v_lo >> 24);
-
-                let b4 = v_hi & 0xFF;
-                let b5 = (v_hi >> 8) & 0xFF;
-                let b6 = (v_hi >> 16) & 0xFF;
-                let b7 = (v_hi >> 24);
-
-                $s2 += ($s1 << 3)
-                    + (b0 << 3)
-                    + (b1.wrapping_mul(7))
-                    + (b2.wrapping_mul(6))
-                    + (b3.wrapping_mul(5))
-                    + (b4 << 2)
-                    + (b5.wrapping_mul(3))
-                    + (b6 << 1)
-                    + b7;
-                $s1 += b0 + b1 + b2 + b3 + b4 + b5 + b6 + b7;
-
-                $ptr = $ptr.add(8);
-                $len -= 8;
+                adler32_chunk8!($s1, $s2, $ptr, $len);
             }
             if $len >= 4 {
                 let v = ($ptr as *const u32).read_unaligned();
@@ -303,16 +309,15 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     if len > 2048 {
         let align = (ptr as usize) & 31;
         if align != 0 {
-            let len_p = std::cmp::min(len, 32 - align);
-            let prefix = std::slice::from_raw_parts(ptr, len_p);
-            for &b in prefix {
-                s1 += b as u32;
-                s2 += s1;
+            let original_len_p = std::cmp::min(len, 32 - align);
+            let mut len_p = original_len_p;
+            while len_p >= 8 {
+                adler32_chunk8!(s1, s2, ptr, len_p);
             }
+            adler32_tail!(s1, s2, ptr, len_p);
             s1 %= DIVISOR;
             s2 %= DIVISOR;
-            ptr = ptr.add(len_p);
-            len -= len_p;
+            len -= original_len_p;
         }
     }
 
@@ -610,14 +615,16 @@ pub unsafe fn adler32_x86_avx2_vnni(adler: u32, p: &[u8]) -> u32 {
     if data.len() > 2048 {
         let align = (data.as_ptr() as usize) & 31;
         if align != 0 {
-            let len = std::cmp::min(data.len(), 32 - align);
-            for &b in &data[..len] {
-                s1 += b as u32;
-                s2 += s1;
+            let original_len_p = std::cmp::min(data.len(), 32 - align);
+            let mut len_p = original_len_p;
+            let mut ptr = data.as_ptr();
+            while len_p >= 8 {
+                adler32_chunk8!(s1, s2, ptr, len_p);
             }
+            adler32_tail!(s1, s2, ptr, len_p);
             s1 %= DIVISOR;
             s2 %= DIVISOR;
-            data = &data[len..];
+            data = &data[original_len_p..];
         }
     }
 
@@ -899,14 +906,16 @@ pub unsafe fn adler32_x86_avx512_vnni(adler: u32, p: &[u8]) -> u32 {
     if data.len() > 2048 {
         let align = (data.as_ptr() as usize) & 63;
         if align != 0 {
-            let len = std::cmp::min(data.len(), 64 - align);
-            for &b in &data[..len] {
-                s1 += b as u32;
-                s2 += s1;
+            let original_len_p = std::cmp::min(data.len(), 64 - align);
+            let mut len_p = original_len_p;
+            let mut ptr = data.as_ptr();
+            while len_p >= 8 {
+                adler32_chunk8!(s1, s2, ptr, len_p);
             }
+            adler32_tail!(s1, s2, ptr, len_p);
             s1 %= DIVISOR;
             s2 %= DIVISOR;
-            data = &data[len..];
+            data = &data[original_len_p..];
         }
     }
 

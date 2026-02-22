@@ -453,6 +453,27 @@ fn bench_adler32_nano(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_adler32_unaligned(c: &mut Criterion) {
+    let sizes = [1024, 4096];
+    let mut group = c.benchmark_group("Adler32 Unaligned");
+
+    for size in sizes {
+        // Allocate extra space to create unaligned slice
+        let raw_data = vec![0u8; size + 1];
+        let data = &raw_data[1..]; // Unaligned by 1 byte
+        group.throughput(Throughput::Bytes(size as u64));
+
+        group.bench_with_input(
+            BenchmarkId::new("libdeflate-rs", size),
+            &size,
+            |b, &_size| {
+                b.iter(|| adler32(1, data));
+            },
+        );
+    }
+    group.finish();
+}
+
 fn bench_decompress_offset28(c: &mut Criterion) {
     let path = "bench_data/data_offset28.bin";
     if !Path::new(path).exists() {
@@ -2059,6 +2080,7 @@ criterion_group!(
     bench_adler32_nano,
     bench_adler32_micro,
     bench_adler32_tail,
+    bench_adler32_unaligned,
     bench_crc32_micro,
     bench_decompress_offset8,
     bench_decompress_offset3,
