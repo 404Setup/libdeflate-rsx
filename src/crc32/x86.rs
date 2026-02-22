@@ -576,6 +576,7 @@ pub unsafe fn crc32_x86_vpclmulqdq_avx512_vl512(crc: u32, p: &[u8]) -> u32 {
         }
         if len > 0 {
             x0 = fold_lessthan16bytes_avx512(x0, data, len, mults_128b);
+            len = 0;
         }
     }
 
