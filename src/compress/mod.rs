@@ -709,7 +709,12 @@ impl Compressor {
                 self.split_stats.observe_match(len, offset);
                 p += len;
                 for i in 1..len {
-                    mf.skip_match(input, p - len + i, self.max_search_depth);
+                    mf.skip_match(
+                        input,
+                        p - len + i,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                 }
             } else {
                 self.split_stats.observe_literal(input[p]);
@@ -740,7 +745,13 @@ impl Compressor {
                 });
                 self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
                 self.offset_freqs[self.get_offset_slot(offset)] += 1;
-                mf.skip_positions(block_input, cur_in_idx + 1, len - 1, self.max_search_depth);
+                mf.skip_positions(
+                    block_input,
+                    cur_in_idx + 1,
+                    len - 1,
+                    self.max_search_depth,
+                    self.nice_match_length,
+                );
                 cur_in_idx += len;
             } else {
                 self.litlen_freqs[block_input[cur_in_idx] as usize] += 1;
@@ -824,7 +835,13 @@ impl Compressor {
 
             if best_len >= self.nice_match_length {
                 let skip = best_len;
-                mf.skip_positions(block_input, pos + 1, skip - 1, self.max_search_depth);
+                mf.skip_positions(
+                    block_input,
+                    pos + 1,
+                    skip - 1,
+                    self.max_search_depth,
+                    self.nice_match_length,
+                );
                 pos += skip;
             } else {
                 pos += 1;
@@ -927,7 +944,13 @@ impl Compressor {
                 self.split_stats.observe_match(len, offset);
                 self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
                 self.offset_freqs[self.get_offset_slot(offset)] += 1;
-                mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
+                mf.skip_positions(
+                    input,
+                    in_idx + 1,
+                    len - 1,
+                    self.max_search_depth,
+                    self.nice_match_length,
+                );
                 in_idx += len;
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -1156,6 +1179,7 @@ impl Compressor {
                         in_idx + 1 + skipped,
                         len - 1 - skipped,
                         self.max_search_depth,
+                        self.nice_match_length,
                     );
                 }
                 in_idx += len;
@@ -1368,7 +1392,13 @@ impl Compressor {
                         self.get_offset_slot(offset) as u8,
                     ));
                     litrunlen = 0;
-                    mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
+                    mf.skip_positions(
+                        input,
+                        in_idx + 1,
+                        len - 1,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                     in_idx += len;
                 } else {
                     litrunlen += 1;
@@ -1395,7 +1425,13 @@ impl Compressor {
                         self.get_offset_slot(offset) as u8,
                     ));
                     litrunlen = 0;
-                    mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
+                    mf.skip_positions(
+                        input,
+                        in_idx + 1,
+                        len - 1,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                     in_idx += len;
                 } else {
                     self.split_stats.observe_literal(input[in_idx]);
@@ -1489,7 +1525,13 @@ impl Compressor {
                 mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
-                mf.skip_positions(input, in_idx + 1, len - 1, self.max_search_depth);
+                mf.skip_positions(
+                    input,
+                    in_idx + 1,
+                    len - 1,
+                    self.max_search_depth,
+                    self.nice_match_length,
+                );
                 in_idx += len;
             } else {
                 self.split_stats.observe_literal(input[in_idx]);
@@ -1529,7 +1571,12 @@ impl Compressor {
                 litrunlen = 0;
                 cur_in_idx += len;
                 for i in 1..len {
-                    mf.skip_match(block_input, cur_in_idx - len + i, self.max_search_depth);
+                    mf.skip_match(
+                        block_input,
+                        cur_in_idx - len + i,
+                        self.max_search_depth,
+                        self.nice_match_length,
+                    );
                 }
             } else {
                 self.litlen_freqs[block_input[cur_in_idx] as usize] += 1;
@@ -1614,7 +1661,13 @@ impl Compressor {
 
             if best_len >= self.nice_match_length {
                 let skip = best_len;
-                mf.skip_positions(block_input, pos + 1, skip - 1, self.max_search_depth);
+                mf.skip_positions(
+                    block_input,
+                    pos + 1,
+                    skip - 1,
+                    self.max_search_depth,
+                    self.nice_match_length,
+                );
                 pos += skip;
             } else {
                 pos += 1;

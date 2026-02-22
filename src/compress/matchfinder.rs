@@ -98,10 +98,17 @@ pub trait MatchFinderTrait {
         max_depth: usize,
         nice_len: usize,
     ) -> (usize, usize);
-    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize);
-    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, max_depth: usize) {
+    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize);
+    fn skip_positions(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        count: usize,
+        max_depth: usize,
+        nice_len: usize,
+    ) {
         for i in 0..count {
-            self.skip_match(data, pos + i, max_depth);
+            self.skip_match(data, pos + i, max_depth, nice_len);
         }
     }
     fn find_matches(
@@ -133,10 +140,17 @@ impl MatchFinderTrait for MatchFinder {
     ) -> (usize, usize) {
         self.find_match(data, pos, max_depth, nice_len)
     }
-    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
+    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize, _nice_len: usize) {
         self.skip_match(data, pos);
     }
-    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, _max_depth: usize) {
+    fn skip_positions(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        count: usize,
+        _max_depth: usize,
+        _nice_len: usize,
+    ) {
         self.skip_positions(data, pos, count);
     }
     fn find_matches(
@@ -170,10 +184,17 @@ impl MatchFinderTrait for HtMatchFinder {
     ) -> (usize, usize) {
         self.find_match(data, pos)
     }
-    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize) {
+    fn skip_match(&mut self, data: &[u8], pos: usize, _max_depth: usize, _nice_len: usize) {
         self.skip_match(data, pos);
     }
-    fn skip_positions(&mut self, data: &[u8], pos: usize, count: usize, _max_depth: usize) {
+    fn skip_positions(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        count: usize,
+        _max_depth: usize,
+        _nice_len: usize,
+    ) {
         self.skip_positions(data, pos, count);
     }
     fn find_matches(
@@ -214,9 +235,17 @@ impl MatchFinderTrait for BtMatchFinder {
     ) -> (usize, usize) {
         self.find_match(data, pos, max_depth, nice_len)
     }
-    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize) {
+    fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize) {
         let mut matches = Vec::new();
-        self.advance_one_byte(data, pos, 0, 0, max_depth, &mut matches, false);
+        self.advance_one_byte(
+            data,
+            pos,
+            DEFLATE_MAX_MATCH_LEN,
+            nice_len,
+            max_depth,
+            &mut matches,
+            false,
+        );
     }
     fn find_matches(
         &mut self,
@@ -1427,14 +1456,15 @@ impl BtMatchFinder {
             if record_matches && len > best_len {
                 best_len = len;
                 matches.push((len as u16, (abs_pos - p_abs) as u16));
-                if len >= nice_len {
-                    let children = *self.child_tab.get_unchecked(p_child_idx);
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                        children[0];
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                        children[1];
-                    return;
-                }
+            }
+
+            if len >= nice_len {
+                let children = *self.child_tab.get_unchecked(p_child_idx);
+                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
+                    children[0];
+                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
+                    children[1];
+                return;
             }
 
             if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
@@ -1596,7 +1626,7 @@ mod tests {
     fn test_bt_match_overflow() {
         let mut mf = BtMatchFinder::new();
         let data = b"some data";
-        mf.skip_match(data, usize::MAX, 10);
+        mf.skip_match(data, usize::MAX, 10, 258);
     }
 
     #[test]
