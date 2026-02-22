@@ -1941,16 +1941,12 @@ impl Compressor {
         (LENGTH_WRITE_TABLE[len] >> 24) as usize
     }
 
+    #[inline(always)]
     fn get_offset_slot(&self, offset: usize) -> usize {
-        if offset < OFFSET_SLOT_TABLE.len() {
-            // SAFETY: Bounds check is performed above.
-            unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset) as usize }
-        } else {
-            // Fallback for offsets > 32768 (rare/non-standard).
-            let off = (offset - 1) as u32;
-            let l = bsr32(off);
-            ((2 * l) + ((off >> (l - 1)) & 1)) as usize
-        }
+        debug_assert!(offset < OFFSET_SLOT_TABLE.len());
+        // SAFETY: The match finder guarantees offset <= DEFLATE_MAX_MATCH_OFFSET (32768),
+        // which is within the table bounds (32769).
+        unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset) as usize }
     }
 
     fn update_costs(&mut self) {
