@@ -324,9 +324,9 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
     let ones_i16 = _mm256_set1_epi16(1);
     let v_zero = _mm256_setzero_si256();
 
-    while len >= 64 {
+    while len >= 32 {
         let n = std::cmp::min(len, BLOCK_SIZE);
-        let n_rounded = n & !63;
+        let n_rounded = n & !31;
 
         s2 += s1 * (n_rounded as u32);
 
@@ -525,6 +525,28 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         }
         v_s2 = _mm256_add_epi32(v_s2, v_s2_acc_b);
 
+        while chunk_n >= 32 {
+            let d = _mm256_loadu_si256(ptr as *const __m256i);
+
+            // Update v_s1_sums: v_s1 contributes to next 32 bytes.
+            // v_s1_sums += v_s1 * 32
+            let v_s1_x32 = _mm256_slli_epi32(v_s1, 5);
+            v_s1_sums = _mm256_add_epi32(v_s1_sums, v_s1_x32);
+
+            // Update v_s1: v_s1 += sad
+            let sad = _mm256_sad_epu8(d, v_zero);
+            v_s1 = _mm256_add_epi32(v_s1, sad);
+
+            // Update v_s2: v_s2 += weighted_sum
+            let p = _mm256_maddubs_epi16(d, weights);
+            let s = _mm256_madd_epi16(p, ones_i16);
+            v_s2 = _mm256_add_epi32(v_s2, s);
+
+            ptr = ptr.add(32);
+            chunk_n -= 32;
+            len -= 32;
+        }
+
         v_s2 = _mm256_add_epi32(v_s2, v_s1_sums);
 
         let v_s1_128 = _mm_add_epi32(
@@ -548,34 +570,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-    if len >= 32 {
-        let d = _mm256_loadu_si256(ptr as *const __m256i);
-
-        let sad = _mm256_sad_epu8(d, v_zero);
-        let sad_lo = _mm256_castsi256_si128(sad);
-        let sad_hi = _mm256_extracti128_si256(sad, 1);
-        let sad_sum = _mm_add_epi64(sad_lo, sad_hi);
-        let sad_sum = _mm_add_epi64(sad_sum, _mm_unpackhi_epi64(sad_sum, sad_sum));
-        let s1_part = _mm_cvtsi128_si32(sad_sum) as u32;
-
-        s2 += s1 * 32;
-        s1 += s1_part;
-
-        // Optimization: reuse hoisted weights constant
-        let p = _mm256_maddubs_epi16(d, weights);
-        let s = _mm256_madd_epi16(p, ones_i16);
-
-        let s_lo = _mm256_castsi256_si128(s);
-        let s_hi = _mm256_extracti128_si256(s, 1);
-        let s_sum = _mm_add_epi32(s_lo, s_hi);
-        let s_sum = _mm_add_epi32(s_sum, _mm_shuffle_epi32(s_sum, 0x4E));
-        let s_sum = _mm_add_epi32(s_sum, _mm_shuffle_epi32(s_sum, 0xB1));
-
-        s2 += _mm_cvtsi128_si32(s_sum) as u32;
-
-        ptr = ptr.add(32);
-        len -= 32;
-    }
 
     if len >= 16 {
         let d = _mm_loadu_si128(ptr as *const __m128i);
