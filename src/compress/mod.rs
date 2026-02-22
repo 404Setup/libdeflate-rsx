@@ -265,23 +265,23 @@ pub enum FlushMode {
 }
 
 pub struct Compressor {
-    pub compression_level: usize,
-    pub max_search_depth: usize,
-    pub nice_match_length: usize,
-    pub litlen_freqs: [u32; DEFLATE_NUM_LITLEN_SYMS],
-    pub offset_freqs: [u32; DEFLATE_NUM_OFFSET_SYMS],
-    pub litlen_codewords: [u32; DEFLATE_NUM_LITLEN_SYMS],
-    pub litlen_lens: [u8; DEFLATE_NUM_LITLEN_SYMS],
-    pub offset_codewords: [u32; DEFLATE_NUM_OFFSET_SYMS],
-    pub offset_lens: [u8; DEFLATE_NUM_OFFSET_SYMS],
+    pub(crate) compression_level: usize,
+    pub(crate) max_search_depth: usize,
+    pub(crate) nice_match_length: usize,
+    pub(crate) litlen_freqs: [u32; DEFLATE_NUM_LITLEN_SYMS],
+    pub(crate) offset_freqs: [u32; DEFLATE_NUM_OFFSET_SYMS],
+    pub(crate) litlen_codewords: [u32; DEFLATE_NUM_LITLEN_SYMS],
+    pub(crate) litlen_lens: [u8; DEFLATE_NUM_LITLEN_SYMS],
+    pub(crate) offset_codewords: [u32; DEFLATE_NUM_OFFSET_SYMS],
+    pub(crate) offset_lens: [u8; DEFLATE_NUM_OFFSET_SYMS],
 
-    pub litlen_table: [u64; DEFLATE_NUM_LITLEN_SYMS],
-    pub offset_table: [u64; DEFLATE_NUM_OFFSET_SYMS],
-    pub match_len_table: [u64; DEFLATE_MAX_MATCH_LEN + 1],
+    pub(crate) litlen_table: [u64; DEFLATE_NUM_LITLEN_SYMS],
+    pub(crate) offset_table: [u64; DEFLATE_NUM_OFFSET_SYMS],
+    pub(crate) match_len_table: [u64; DEFLATE_MAX_MATCH_LEN + 1],
 
-    pub literal_costs: [u32; 256],
-    pub length_costs: [u32; DEFLATE_MAX_MATCH_LEN + 1],
-    pub offset_slot_costs: [u32; 32],
+    pub(crate) literal_costs: [u32; 256],
+    pub(crate) length_costs: [u32; DEFLATE_MAX_MATCH_LEN + 1],
+    pub(crate) offset_slot_costs: [u32; 32],
 
     mf: Option<MatchFinderEnum>,
     sequences: Vec<Sequence>,

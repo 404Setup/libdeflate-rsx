@@ -48,21 +48,21 @@ pub enum DecompressorState {
 
 #[derive(Clone)]
 pub struct Decompressor {
-    pub precode_decode_table: [u32; PRECODE_ENOUGH],
-    pub litlen_decode_table: [u32; LITLEN_ENOUGH],
-    pub offset_decode_table: [u32; OFFSET_ENOUGH],
+    pub(crate) precode_decode_table: [u32; PRECODE_ENOUGH],
+    pub(crate) litlen_decode_table: [u32; LITLEN_ENOUGH],
+    pub(crate) offset_decode_table: [u32; OFFSET_ENOUGH],
 
-    pub precode_lens: [u8; DEFLATE_NUM_PRECODE_SYMS],
-    pub lens: [u8; DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + DEFLATE_MAX_LENS_OVERRUN],
-    pub sorted_syms: [u16; DEFLATE_MAX_NUM_SYMS],
+    pub(crate) precode_lens: [u8; DEFLATE_NUM_PRECODE_SYMS],
+    pub(crate) lens: [u8; DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + DEFLATE_MAX_LENS_OVERRUN],
+    pub(crate) sorted_syms: [u16; DEFLATE_MAX_NUM_SYMS],
 
-    pub litlen_tablebits: usize,
-    pub static_codes_loaded: bool,
+    pub(crate) litlen_tablebits: usize,
+    pub(crate) static_codes_loaded: bool,
 
-    pub bitbuf: u64,
-    pub bitsleft: u32,
-    pub state: DecompressorState,
-    pub is_final_block: bool,
+    pub(crate) bitbuf: u64,
+    pub(crate) bitsleft: u32,
+    pub(crate) state: DecompressorState,
+    pub(crate) is_final_block: bool,
 }
 
 struct StaticHuffmanData {
