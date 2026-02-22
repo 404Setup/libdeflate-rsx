@@ -2642,9 +2642,13 @@ fn bench_crc32_large(c: &mut Criterion) {
 
     group.throughput(Throughput::Bytes(size as u64));
 
-    group.bench_with_input(BenchmarkId::new("libdeflate-rs", size), &size, |b, &_size| {
-        b.iter(|| crc32(0, &data));
-    });
+    group.bench_with_input(
+        BenchmarkId::new("libdeflate-rs", size),
+        &size,
+        |b, &_size| {
+            b.iter(|| crc32(0, &data));
+        },
+    );
 
     group.bench_with_input(BenchmarkId::new("libdeflater", size), &size, |b, &_size| {
         b.iter(|| libdeflater::crc32(&data));
@@ -2672,13 +2676,19 @@ fn bench_decompress_large_synthetic(c: &mut Criterion) {
     let mut group = c.benchmark_group("Decompress Large Synthetic");
     group.throughput(Throughput::Bytes(size as u64));
 
-    group.bench_with_input("libdeflate-rs decompress_deflate 10MB", &size, |b, &_size| {
-        let mut decompressor = Decompressor::new();
-        b.iter(|| {
-            // Use decompress_deflate which allocates memory
-            decompressor.decompress_deflate(&compressed_data[..compressed_size], size).unwrap()
-        });
-    });
+    group.bench_with_input(
+        "libdeflate-rs decompress_deflate 10MB",
+        &size,
+        |b, &_size| {
+            let mut decompressor = Decompressor::new();
+            b.iter(|| {
+                // Use decompress_deflate which allocates memory
+                decompressor
+                    .decompress_deflate(&compressed_data[..compressed_size], size)
+                    .unwrap()
+            });
+        },
+    );
 
     group.finish();
 }

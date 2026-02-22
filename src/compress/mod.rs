@@ -187,9 +187,8 @@ impl BlockSplitStats {
         debug_assert!(offset >= 1);
         let off_idx_base = unsafe { *OFF_IDX_TABLE.get_unchecked(bsr32(offset as u32) as usize) };
 
-        let off_idx = NUM_LITERAL_OBSERVATION_TYPES
-            + NUM_MATCH_OBSERVATION_TYPES
-            + off_idx_base as usize;
+        let off_idx =
+            NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES + off_idx_base as usize;
         unsafe {
             *self.new_observations.get_unchecked_mut(off_idx) += 1;
         }
@@ -704,7 +703,8 @@ impl Compressor {
             {
                 break;
             }
-            let (len, offset) = mf.find_match(input, p, self.max_search_depth, self.nice_match_length);
+            let (len, offset) =
+                mf.find_match(input, p, self.max_search_depth, self.nice_match_length);
             if len >= 3 {
                 self.split_stats.observe_match(len, offset);
                 p += len;

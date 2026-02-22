@@ -862,7 +862,6 @@ unsafe fn fold_vec512(dst: __m512i, src: __m512i, mults: __m512i) -> __m512i {
     )
 }
 
-
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f,avx512vl,vpclmulqdq")]
 unsafe fn fold_vec128_avx512(dst: __m128i, src: __m128i, mults: __m128i) -> __m128i {
@@ -884,4 +883,3 @@ unsafe fn fold_vec256_avx512(dst: __m256i, src: __m256i, mults: __m256i) -> __m2
         0x96,
     )
 }
-

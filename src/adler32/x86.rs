@@ -575,7 +575,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         s2 %= DIVISOR;
     }
 
-
     if len >= 16 {
         let d = _mm_loadu_si128(ptr as *const __m128i);
         let v_zero_xmm = _mm_setzero_si128();

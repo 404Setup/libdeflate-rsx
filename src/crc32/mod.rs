@@ -93,7 +93,8 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
             1 => {
                 let b0 = unsafe { *ptr } as u32;
                 crc = unsafe {
-                    (crc >> 8) ^ *CRC32_SLICE8_TABLE.get_unchecked(((crc as u8 as u32) ^ b0) as usize)
+                    (crc >> 8)
+                        ^ *CRC32_SLICE8_TABLE.get_unchecked(((crc as u8 as u32) ^ b0) as usize)
                 };
             }
             _ => unsafe { std::hint::unreachable_unchecked() },

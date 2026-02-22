@@ -201,9 +201,7 @@ impl Decompressor {
         output: &mut [u8],
         out_idx: &mut usize,
     ) -> (DecompressResult, usize, usize) {
-        unsafe {
-            self.decompress_streaming_ptr(input, output.as_mut_ptr(), output.len(), out_idx)
-        }
+        unsafe { self.decompress_streaming_ptr(input, output.as_mut_ptr(), output.len(), out_idx) }
     }
 
     unsafe fn decompress_streaming_ptr(
@@ -1099,9 +1097,8 @@ impl Decompressor {
             return (res, in_consumed + 2, out_produced);
         }
 
-        let out_slice = unsafe {
-            std::slice::from_raw_parts(output.as_ptr() as *const u8, out_produced)
-        };
+        let out_slice =
+            unsafe { std::slice::from_raw_parts(output.as_ptr() as *const u8, out_produced) };
         let actual_adler = crate::adler32::adler32(1, out_slice);
         let expected_adler = u32::from_be_bytes([
             input[2 + in_consumed],
@@ -1190,16 +1187,16 @@ impl Decompressor {
             return (DecompressResult::ShortInput, 0, 0);
         }
 
-        let (res, in_consumed, out_produced) =
-            unsafe { self.decompress_uninit(&input[in_idx..input.len() - GZIP_FOOTER_SIZE], output) };
+        let (res, in_consumed, out_produced) = unsafe {
+            self.decompress_uninit(&input[in_idx..input.len() - GZIP_FOOTER_SIZE], output)
+        };
 
         if res != DecompressResult::Success {
             return (res, in_idx + in_consumed, out_produced);
         }
 
-        let out_slice = unsafe {
-            std::slice::from_raw_parts(output.as_ptr() as *const u8, out_produced)
-        };
+        let out_slice =
+            unsafe { std::slice::from_raw_parts(output.as_ptr() as *const u8, out_produced) };
         let actual_crc = crate::crc32::crc32(0, out_slice);
         let expected_crc = u32::from_le_bytes([
             input[in_idx + in_consumed],
