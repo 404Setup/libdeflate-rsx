@@ -49,19 +49,23 @@ pub unsafe fn adler32_arm_neon(adler: u32, p: &[u8]) -> u32 {
 
             v_s2 = vaddq_u32(v_s2, v_s1);
 
-            let mut tmp = vpaddlq_u8(data_a);
+            // Optimization: Break dependency chain for v_s1 accumulation.
+            // Instead of accumulating pairwise sums serially (4x), we compute them in two parallel
+            // branches and then combine. This allows better instruction-level parallelism.
+            let tmp_a = vpaddlq_u8(data_a);
+            let tmp_c = vpaddlq_u8(data_c);
+
+            let tmp_ab = vpadalq_u8(tmp_a, data_b);
+            let tmp_cd = vpadalq_u8(tmp_c, data_d);
+
+            let tmp = vaddq_u16(tmp_ab, tmp_cd);
+
             v_byte_sums[0] = vaddw_u8(v_byte_sums[0], vget_low_u8(data_a));
             v_byte_sums[1] = vaddw_u8(v_byte_sums[1], vget_high_u8(data_a));
-
-            tmp = vpadalq_u8(tmp, data_b);
             v_byte_sums[2] = vaddw_u8(v_byte_sums[2], vget_low_u8(data_b));
             v_byte_sums[3] = vaddw_u8(v_byte_sums[3], vget_high_u8(data_b));
-
-            tmp = vpadalq_u8(tmp, data_c);
             v_byte_sums[4] = vaddw_u8(v_byte_sums[4], vget_low_u8(data_c));
             v_byte_sums[5] = vaddw_u8(v_byte_sums[5], vget_high_u8(data_c));
-
-            tmp = vpadalq_u8(tmp, data_d);
             v_byte_sums[6] = vaddw_u8(v_byte_sums[6], vget_low_u8(data_d));
             v_byte_sums[7] = vaddw_u8(v_byte_sums[7], vget_high_u8(data_d));
 
