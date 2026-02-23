@@ -856,6 +856,35 @@ unsafe fn decompress_offset_30(out_next: *mut u8, src: *const u8, v: __m128i, le
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_32(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
+    let v2 = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let mut copied = 16;
+    while copied + 64 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v);
+        copied += 64;
+    }
+
+    if copied + 32 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v);
+        copied += 32;
+    }
+
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        copied += 16;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_28(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
     let v_align = _mm_loadu_si128(src.add(12) as *const __m128i);
     let v0 = v;
@@ -1440,16 +1469,7 @@ pub unsafe fn decompress_bmi2_ptr(
                                                     );
                                                 }
                                                 32 => {
-                                                    let v2 = _mm_loadu_si128(
-                                                        src.add(16) as *const __m128i
-                                                    );
-                                                    decompress_write_cycle_vectors(
-                                                        out_next,
-                                                        src,
-                                                        &[v2, v],
-                                                        length,
-                                                        16,
-                                                    );
+                                                    decompress_offset_32(out_next, src, v, length)
                                                 }
                                                 40 => {
                                                     decompress_offset_40(out_next, src, v, length)
