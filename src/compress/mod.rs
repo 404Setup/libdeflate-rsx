@@ -950,15 +950,6 @@ impl Compressor {
                 mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
 
             if len >= 3 {
-                if lazy_depth >= 1 && in_idx + 1 < input.len() {
-                    let (_next_len, _next_offset) = mf.find_match(
-                        input,
-                        in_idx + 1,
-                        self.max_search_depth,
-                        self.nice_match_length,
-                    );
-                }
-
                 self.split_stats.observe_match(len, offset);
                 self.litlen_freqs[257 + self.get_length_slot(len)] += 1;
                 self.offset_freqs[self.get_offset_slot(offset)] += 1;
@@ -1128,7 +1119,8 @@ impl Compressor {
 
             if len >= 3 {
                 let mut skipped = 0;
-                if lazy_depth >= 1 && in_idx + 1 < input.len() {
+                // Optimization: Skip lazy check if the current match is "nice" enough.
+                if lazy_depth >= 1 && in_idx + 1 < input.len() && len < self.nice_match_length {
                     let (next_len, next_offset) = mf.find_match(
                         input,
                         in_idx + 1,
