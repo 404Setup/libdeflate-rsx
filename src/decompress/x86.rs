@@ -715,7 +715,19 @@ unsafe fn decompress_offset_9(out_next: *mut u8, src: *const u8, length: usize) 
     let v_pat = _mm_shuffle_epi8(v_raw, mask);
 
     let mut copied = 0;
-    while copied + 64 <= length {
+    while copied + 80 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 27) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 36) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 54) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 63) as *mut __m128i, v_pat);
+        copied += 72;
+    }
+
+    while copied + 48 <= length {
         _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
         _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
         _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
