@@ -952,13 +952,14 @@ unsafe fn decompress_offset_17(out_next: *mut u8, src: *const u8, v: __m128i, le
         copied += 48;
     }
 
-    while copied + 16 <= length {
+    if copied + 16 <= length {
         _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
-        let next = _mm_alignr_epi8(v1, v0, 14);
-        v0 = v1;
-        v1 = v2;
-        v2 = next;
         copied += 16;
+
+        if copied + 16 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+            copied += 16;
+        }
     }
 
     if copied < length {

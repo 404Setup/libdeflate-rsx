@@ -34,3 +34,7 @@
 ## 2024-05-23 - [Match vs If-Else Dispatch in Hot Loops]
 **Learning:** Replacing a long `if-else if` chain (18+ branches) with a `match` statement in a tight loop (decompression offset handling) improved performance for mixed workloads and constant offsets that were deep in the chain, but surprisingly caused a regression for some offsets that were previously checked late but handled with complex logic (offset 15). This suggests that while `match` generally enables better code generation (jump tables), the specific layout or cache effects for complex arms can be sensitive.
 **Action:** When optimizing hot dispatch loops, prefer `match` for maintainability and general case performance, but verifying specific "hot" constants (like small offsets) is crucial as compiler heuristics might vary.
+
+## 2026-06-05 - [Offset 17 Tail Optimization]
+**Learning:** For `decompress_offset_17`, the tail handling loop calculated the next vector state `next = alignr(...)` even when it was never used (because the loop runs at most twice). Removing this dead calculation and unrolling the `while` loop into `if` checks improved throughput for small buffers (64 bytes) by ~2.7% by reducing instruction count and control flow overhead.
+**Action:** When unrolling tail loops, verify if state updates for the next iteration are actually needed. If the remaining count is bounded, dead code elimination can be manually applied.
