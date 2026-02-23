@@ -42,9 +42,7 @@ macro_rules! refill_bits {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_18(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
-    let val = std::ptr::read_unaligned(src.add(16) as *const u16) as i32;
-    let v_temp = _mm_cvtsi32_si128(val);
-    let v_align = _mm_slli_si128(v_temp, 14);
+    let v_align = _mm_loadu_si128(src.add(2) as *const __m128i);
 
     let v0 = v;
     // v1 depends on v0 and v_align.
@@ -933,8 +931,7 @@ unsafe fn decompress_offset_15(out_next: *mut u8, src: *const u8, length: usize)
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_17(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
-    let c = *src.add(16);
-    let v_align = _mm_insert_epi8(v, c as i32, 15);
+    let v_align = _mm_loadu_si128(src.add(1) as *const __m128i);
     let mut v1 = _mm_alignr_epi8(v, v_align, 15);
     let mut v0 = v;
     let mut v2 = _mm_alignr_epi8(v1, v0, 15);
@@ -972,9 +969,7 @@ unsafe fn decompress_offset_17(out_next: *mut u8, src: *const u8, v: __m128i, le
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_20(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
-    let val = std::ptr::read_unaligned(src.add(16) as *const u32);
-    let v_temp = _mm_cvtsi32_si128(val as i32);
-    let v_align = _mm_slli_si128(v_temp, 12);
+    let v_align = _mm_loadu_si128(src.add(4) as *const __m128i);
 
     let v0 = v;
     let v1 = _mm_alignr_epi8(v0, v_align, 12);
@@ -1022,8 +1017,7 @@ unsafe fn decompress_offset_20(out_next: *mut u8, src: *const u8, v: __m128i, le
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_offset_24(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
-    let val = std::ptr::read_unaligned(src.add(16) as *const u64);
-    let v_tail = _mm_cvtsi64_si128(val as i64);
+    let v_tail = _mm_loadu_si128(src.add(16) as *const __m128i);
 
     let v0 = v;
     let v1 = _mm_unpacklo_epi64(v_tail, v0);
