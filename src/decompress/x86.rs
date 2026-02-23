@@ -1022,13 +1022,61 @@ unsafe fn decompress_offset_36(out_next: *mut u8, src: *const u8, v: __m128i, le
     let v7 = _mm_alignr_epi8(v1, v0, 4);
     let v8 = v_part;
 
-    decompress_write_cycle_vectors(
-        out_next,
-        src,
-        &[v1, v2, v3, v4, v5, v6, v7, v8, v0],
-        length,
-        16,
-    );
+    let mut copied = 16;
+    let stride = 144;
+    while copied + stride <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v3);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v4);
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v5);
+        _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, v6);
+        _mm_storeu_si128(out_next.add(copied + 96) as *mut __m128i, v7);
+        _mm_storeu_si128(out_next.add(copied + 112) as *mut __m128i, v8);
+        _mm_storeu_si128(out_next.add(copied + 128) as *mut __m128i, v0);
+        copied += stride;
+    }
+
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v3);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v4);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v5);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v6);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v7);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v8);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v0);
+        copied += 16;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1190,7 +1238,51 @@ unsafe fn decompress_offset_56(out_next: *mut u8, src: *const u8, v: __m128i, le
     let v5 = _mm_alignr_epi8(v2, v1, 8);
     let v6 = _mm_alignr_epi8(v3, v2, 8);
 
-    decompress_write_cycle_vectors(out_next, src, &[v1, v2, v3, v4, v5, v6, v0], length, 16);
+    let mut copied = 16;
+    let stride = 112;
+    while copied + stride <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v3);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v4);
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v5);
+        _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, v6);
+        _mm_storeu_si128(out_next.add(copied + 96) as *mut __m128i, v0);
+        copied += stride;
+    }
+
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v3);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v4);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v5);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v6);
+        copied += 16;
+    }
+    if copied + 16 <= length {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v0);
+        copied += 16;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
 }
 
 #[cfg(target_arch = "x86_64")]
