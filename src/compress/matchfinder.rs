@@ -1138,8 +1138,7 @@ impl HtMatchFinder {
         }
     }
 
-    pub fn skip_positions(&mut self, _data: &[u8], _pos: usize, _count: usize) {
-    }
+    pub fn skip_positions(&mut self, _data: &[u8], _pos: usize, _count: usize) {}
 }
 
 trait MatchVisitor {

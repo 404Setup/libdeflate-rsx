@@ -288,7 +288,8 @@ pub struct Compressor {
 
     mf: Option<MatchFinderEnum>,
     sequences: Vec<Sequence>,
-    dp_nodes: Vec<DPNode>,
+    dp_costs: Vec<u32>,
+    dp_path: Vec<u32>,
     split_stats: BlockSplitStats,
 }
 
@@ -322,7 +323,12 @@ impl Compressor {
             } else {
                 Vec::with_capacity(50000)
             },
-            dp_nodes: if level >= 10 {
+            dp_costs: if level >= 10 {
+                Vec::with_capacity(300000)
+            } else {
+                Vec::new()
+            },
+            dp_path: if level >= 10 {
                 Vec::with_capacity(300000)
             } else {
                 Vec::new()
@@ -777,34 +783,32 @@ impl Compressor {
 
         self.update_costs();
 
-        self.dp_nodes.clear();
-        self.dp_nodes.resize(
-            processed + 1,
-            DPNode {
-                cost: 0x3FFFFFFF,
-                length: 0,
-                offset: 0,
-            },
-        );
-        self.dp_nodes[0].cost = 0;
+        self.dp_costs.clear();
+        self.dp_costs.resize(processed + 1, 0x3FFFFFFF);
+        self.dp_costs[0] = 0;
+
+        self.dp_path.clear();
+        if self.dp_path.capacity() < processed + 1 {
+            self.dp_path.reserve(processed + 1 - self.dp_path.len());
+        }
+        unsafe {
+            self.dp_path.set_len(processed + 1);
+        }
 
         mf.reset();
         let mut matches = Vec::new();
         let mut pos = 0;
         while pos < processed {
-            let cur_cost = self.dp_nodes[pos].cost;
+            let cur_cost = self.dp_costs[pos];
             if cur_cost >= 0x3FFFFFFF {
                 pos += 1;
                 continue;
             }
 
             let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
-            if cur_cost + lit_cost < self.dp_nodes[pos + 1].cost {
-                self.dp_nodes[pos + 1] = DPNode {
-                    cost: cur_cost + lit_cost,
-                    length: 1,
-                    offset: 0,
-                };
+            if cur_cost + lit_cost < self.dp_costs[pos + 1] {
+                self.dp_costs[pos + 1] = cur_cost + lit_cost;
+                self.dp_path[pos + 1] = (1 as u32) | (0 as u32) << 16;
             }
 
             mf.find_matches(
@@ -824,12 +828,9 @@ impl Compressor {
                     best_len = len;
                 }
                 let cost = self.get_match_cost(len, offset as usize);
-                if cur_cost + cost < self.dp_nodes[pos + len].cost {
-                    self.dp_nodes[pos + len] = DPNode {
-                        cost: cur_cost + cost,
-                        length: len as u16,
-                        offset,
-                    };
+                if cur_cost + cost < self.dp_costs[pos + len] {
+                    self.dp_costs[pos + len] = cur_cost + cost;
+                    self.dp_path[pos + len] = (len as u32) | ((offset as u32) << 16);
                 }
             }
 
@@ -854,16 +855,33 @@ impl Compressor {
         self.litlen_freqs[256] = 1;
 
         let mut pos = processed;
+        let mut path_nodes = Vec::with_capacity(processed / 3);
         while pos > 0 {
-            let node = self.dp_nodes[pos];
-            if node.length == 1 {
-                self.litlen_freqs[block_input[pos - 1] as usize] += 1;
-            } else {
-                self.litlen_freqs[257 + self.get_length_slot(node.length as usize)] += 1;
-                self.offset_freqs[self.get_offset_slot(node.offset as usize)] += 1;
-            }
-            pos -= node.length as usize;
+            let packed = self.dp_path[pos];
+            let length = (packed & 0xFFFF) as u16;
+            let offset = (packed >> 16) as u16;
+            path_nodes.push((length, offset));
+            pos -= length as usize;
         }
+
+        let mut litrunlen = 0;
+        let mut cur_pos = 0;
+        for &(length, offset) in path_nodes.iter().rev() {
+            if length == 1 {
+                self.litlen_freqs[block_input[cur_pos] as usize] += 1;
+                litrunlen += 1;
+                cur_pos += 1;
+            } else {
+                let off_slot = self.get_offset_slot(offset as usize);
+                self.sequences
+                    .push(Sequence::new(litrunlen, length, offset, off_slot as u8));
+                self.litlen_freqs[257 + self.get_length_slot(length as usize)] += 1;
+                self.offset_freqs[off_slot] += 1;
+                litrunlen = 0;
+                cur_pos += length as usize;
+            }
+        }
+        self.sequences.push(Sequence::new(litrunlen, 0, 0, 0));
 
         make_huffman_code(
             DEFLATE_NUM_LITLEN_SYMS,
@@ -1603,34 +1621,32 @@ impl Compressor {
 
         self.update_costs();
 
-        self.dp_nodes.clear();
-        self.dp_nodes.resize(
-            processed + 1,
-            DPNode {
-                cost: 0x3FFFFFFF,
-                length: 0,
-                offset: 0,
-            },
-        );
-        self.dp_nodes[0].cost = 0;
+        self.dp_costs.clear();
+        self.dp_costs.resize(processed + 1, 0x3FFFFFFF);
+        self.dp_costs[0] = 0;
+
+        self.dp_path.clear();
+        if self.dp_path.capacity() < processed + 1 {
+            self.dp_path.reserve(processed + 1 - self.dp_path.len());
+        }
+        unsafe {
+            self.dp_path.set_len(processed + 1);
+        }
 
         mf.reset();
         let mut matches = Vec::new();
         let mut pos = 0;
         while pos < processed {
-            let cur_cost = self.dp_nodes[pos].cost;
+            let cur_cost = self.dp_costs[pos];
             if cur_cost >= 0x3FFFFFFF {
                 pos += 1;
                 continue;
             }
 
             let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
-            if cur_cost + lit_cost < self.dp_nodes[pos + 1].cost {
-                self.dp_nodes[pos + 1] = DPNode {
-                    cost: cur_cost + lit_cost,
-                    length: 1,
-                    offset: 0,
-                };
+            if cur_cost + lit_cost < self.dp_costs[pos + 1] {
+                self.dp_costs[pos + 1] = cur_cost + lit_cost;
+                self.dp_path[pos + 1] = (1 as u32) | (0 as u32) << 16;
             }
 
             mf.find_matches(
@@ -1650,12 +1666,9 @@ impl Compressor {
                     best_len = len;
                 }
                 let cost = self.get_match_cost(len, offset as usize);
-                if cur_cost + cost < self.dp_nodes[pos + len].cost {
-                    self.dp_nodes[pos + len] = DPNode {
-                        cost: cur_cost + cost,
-                        length: len as u16,
-                        offset,
-                    };
+                if cur_cost + cost < self.dp_costs[pos + len] {
+                    self.dp_costs[pos + len] = cur_cost + cost;
+                    self.dp_path[pos + len] = (len as u32) | ((offset as u32) << 16);
                 }
             }
 
@@ -1680,33 +1693,30 @@ impl Compressor {
         self.litlen_freqs[256] = 1;
 
         let mut pos = processed;
-        let mut path = Vec::with_capacity(processed);
+        let mut path_nodes = Vec::with_capacity(processed / 3);
         while pos > 0 {
-            let node = self.dp_nodes[pos];
-            path.push(node);
-            pos -= node.length as usize;
+            let packed = self.dp_path[pos];
+            let length = (packed & 0xFFFF) as u16;
+            let offset = (packed >> 16) as u16;
+            path_nodes.push((length, offset));
+            pos -= length as usize;
         }
-        path.reverse();
 
         let mut litrunlen = 0;
         let mut cur_pos = 0;
-        for node in path {
-            if node.length == 1 {
+        for &(length, offset) in path_nodes.iter().rev() {
+            if length == 1 {
                 self.litlen_freqs[block_input[cur_pos] as usize] += 1;
                 litrunlen += 1;
                 cur_pos += 1;
             } else {
-                let off_slot = self.get_offset_slot(node.offset as usize);
-                self.sequences.push(Sequence::new(
-                    litrunlen,
-                    node.length,
-                    node.offset,
-                    off_slot as u8,
-                ));
-                self.litlen_freqs[257 + self.get_length_slot(node.length as usize)] += 1;
+                let off_slot = self.get_offset_slot(offset as usize);
+                self.sequences
+                    .push(Sequence::new(litrunlen, length, offset, off_slot as u8));
+                self.litlen_freqs[257 + self.get_length_slot(length as usize)] += 1;
                 self.offset_freqs[off_slot] += 1;
                 litrunlen = 0;
-                cur_pos += node.length as usize;
+                cur_pos += length as usize;
             }
         }
         self.sequences.push(Sequence::new(litrunlen, 0, 0, 0));

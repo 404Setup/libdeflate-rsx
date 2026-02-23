@@ -35,8 +35,6 @@ macro_rules! refill_bits {
     };
 }
 
-
-
 // Optimization: Specialized implementation for offset 18.
 // By manually constructing the 9 cyclic vectors using independent `alignr` instructions
 // from `v0` and `v1`, we break the serial dependency chain present in the generic loop.
