@@ -289,6 +289,31 @@ unsafe fn decompress_offset_alignr_cycle<const SHIFT: i32>(
             v_align = v_next4;
             copied += 96;
         }
+    } else if SHIFT == 9 {
+        // Optimization for Offset 23: Unroll loop to write 96 bytes (6 vectors) per iteration.
+        // Parallel computation breakdown:
+        // v_next0, v_next1, v_next3, v_next4 depend only on v_prev and v_align!
+        // v_next2, v_next5 depend on v_next0 (and v_prev)
+        while copied + 96 <= length {
+            let v_next0 = _mm_alignr_epi8::<9>(v_prev, v_align);
+            let v_next1 = _mm_alignr_epi8::<2>(v_prev, v_align);
+            let v_next3 = _mm_alignr_epi8::<11>(v_prev, v_align);
+            let v_next4 = _mm_alignr_epi8::<4>(v_prev, v_align);
+
+            let v_next2 = _mm_alignr_epi8::<2>(v_next0, v_prev);
+            let v_next5 = _mm_alignr_epi8::<4>(v_next0, v_prev);
+
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_next0);
+            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_next1);
+            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_next2);
+            _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v_next3);
+            _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v_next4);
+            _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, v_next5);
+
+            v_prev = v_next5;
+            v_align = v_next4;
+            copied += 96;
+        }
     } else {
         while copied + 128 <= length {
             let v_next0 = _mm_alignr_epi8::<SHIFT>(v_prev, v_align);
