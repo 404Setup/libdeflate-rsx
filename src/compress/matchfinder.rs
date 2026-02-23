@@ -236,16 +236,7 @@ impl MatchFinderTrait for BtMatchFinder {
         self.find_match(data, pos, max_depth, nice_len)
     }
     fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize) {
-        let mut matches = Vec::new();
-        self.advance_one_byte(
-            data,
-            pos,
-            DEFLATE_MAX_MATCH_LEN,
-            nice_len,
-            max_depth,
-            &mut matches,
-            false,
-        );
+        self.skip_match(data, pos, max_depth, nice_len);
     }
     fn find_matches(
         &mut self,
@@ -255,21 +246,7 @@ impl MatchFinderTrait for BtMatchFinder {
         nice_len: usize,
         matches: &mut Vec<(u16, u16)>,
     ) -> (usize, usize) {
-        matches.clear();
-        self.advance_one_byte(
-            data,
-            pos,
-            DEFLATE_MAX_MATCH_LEN,
-            nice_len,
-            max_depth,
-            matches,
-            true,
-        );
-        if let Some(&(len, offset)) = matches.last() {
-            (len as usize, offset as usize)
-        } else {
-            (0, 0)
-        }
+        self.find_matches(data, pos, max_depth, nice_len, matches)
     }
 }
 
@@ -312,8 +289,6 @@ unsafe fn match_len_sw(a: *const u8, b: *const u8, max_len: usize) -> usize {
 unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
 
-    // Fail fast for short matches (common case in greedy/lazy parsing).
-    // This avoids loading the second 64-byte chunk if the first one mismatches.
     if len + 16 <= max_len {
         let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
         let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
@@ -325,67 +300,40 @@ unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         len += 16;
     }
 
-    // Unroll loop to process 64 bytes per iteration
-    // Optimization: Use XOR reduction to check for mismatches across 64 bytes at once.
-    // This reduces the instruction count and pressure on the vector-to-scalar path (movemask) compared to individual checks.
-    let v_zero = _mm_setzero_si128();
     while len + 64 <= max_len {
         let v1 = _mm_loadu_si128(a.add(len) as *const __m128i);
         let v2 = _mm_loadu_si128(b.add(len) as *const __m128i);
-        let diff1 = _mm_xor_si128(v1, v2);
+        let cmp1 = _mm_cmpeq_epi8(v1, v2);
+        let mask1 = _mm_movemask_epi8(cmp1) as u32;
+        if mask1 != 0xFFFF {
+            return len + (!mask1).trailing_zeros() as usize;
+        }
 
         let v3 = _mm_loadu_si128(a.add(len + 16) as *const __m128i);
         let v4 = _mm_loadu_si128(b.add(len + 16) as *const __m128i);
-        let diff2 = _mm_xor_si128(v3, v4);
+        let cmp2 = _mm_cmpeq_epi8(v3, v4);
+        let mask2 = _mm_movemask_epi8(cmp2) as u32;
+        if mask2 != 0xFFFF {
+            return len + 16 + (!mask2).trailing_zeros() as usize;
+        }
 
         let v5 = _mm_loadu_si128(a.add(len + 32) as *const __m128i);
         let v6 = _mm_loadu_si128(b.add(len + 32) as *const __m128i);
-        let diff3 = _mm_xor_si128(v5, v6);
+        let cmp3 = _mm_cmpeq_epi8(v5, v6);
+        let mask3 = _mm_movemask_epi8(cmp3) as u32;
+        if mask3 != 0xFFFF {
+            return len + 32 + (!mask3).trailing_zeros() as usize;
+        }
 
         let v7 = _mm_loadu_si128(a.add(len + 48) as *const __m128i);
         let v8 = _mm_loadu_si128(b.add(len + 48) as *const __m128i);
-        let diff4 = _mm_xor_si128(v7, v8);
-
-        let or1 = _mm_or_si128(diff1, diff2);
-        let or2 = _mm_or_si128(diff3, diff4);
-        let or_all = _mm_or_si128(or1, or2);
-
-        // Check if any bit is set in or_all (indicating a mismatch).
-        // In SSE2, we compare against zero to get a mask where 0xFF means equal (zero) and 0x00 means not equal (non-zero).
-        // So if all bytes are zero (match), cmp produces all 0xFF. movemask produces 0xFFFF.
-        let cmp = _mm_cmpeq_epi8(or_all, v_zero);
-        if _mm_movemask_epi8(cmp) == 0xFFFF {
-            len += 64;
-            continue;
-        }
-
-        // Mismatch found. Locate it using the already computed diffs.
-        // Optimization: Use binary search to find the mismatch location.
-        // We check or1 (diff1 | diff2) first.
-        let cmp_or1 = _mm_cmpeq_epi8(or1, v_zero);
-        if _mm_movemask_epi8(cmp_or1) != 0xFFFF {
-            // Mismatch in first 32 bytes (diff1 or diff2)
-            let cmp1 = _mm_cmpeq_epi8(diff1, v_zero);
-            let mask1 = _mm_movemask_epi8(cmp1) as u32;
-            if mask1 != 0xFFFF {
-                return len + (!mask1).trailing_zeros() as usize;
-            }
-            // Must be in diff2
-            let cmp2 = _mm_cmpeq_epi8(diff2, v_zero);
-            let mask2 = _mm_movemask_epi8(cmp2) as u32;
-            return len + 16 + (!mask2).trailing_zeros() as usize;
-        } else {
-            // Mismatch in second 32 bytes (diff3 or diff4)
-            let cmp3 = _mm_cmpeq_epi8(diff3, v_zero);
-            let mask3 = _mm_movemask_epi8(cmp3) as u32;
-            if mask3 != 0xFFFF {
-                return len + 32 + (!mask3).trailing_zeros() as usize;
-            }
-            // Must be in diff4
-            let cmp4 = _mm_cmpeq_epi8(diff4, v_zero);
-            let mask4 = _mm_movemask_epi8(cmp4) as u32;
+        let cmp4 = _mm_cmpeq_epi8(v7, v8);
+        let mask4 = _mm_movemask_epi8(cmp4) as u32;
+        if mask4 != 0xFFFF {
             return len + 48 + (!mask4).trailing_zeros() as usize;
         }
+
+        len += 64;
     }
 
     while len + 16 <= max_len {
@@ -421,7 +369,6 @@ unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
 unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
 
-    // Fail fast for short matches (common case in greedy/lazy parsing)
     if len + 32 <= max_len {
         let v1 = _mm256_loadu_si256(a as *const __m256i);
         let v2 = _mm256_loadu_si256(b as *const __m256i);
@@ -463,13 +410,8 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
             continue;
         }
 
-        // Optimization: Use binary search to find the mismatch location.
-        // We check or1 (xor1 | xor2) first. If it's non-zero, the mismatch is in the first 64 bytes.
-        // Otherwise, it's in the second 64 bytes (or2).
         if _mm256_testz_si256(or1, or1) == 0 {
             if _mm256_testz_si256(xor1, xor1) == 0 {
-                // Optimization: Use xor1 (already computed) instead of v1/v2 to check for equality.
-                // This allows the compiler to free v1/v2 registers earlier, reducing register pressure.
                 let cmp = _mm256_cmpeq_epi8(xor1, v_zero);
                 let mask = _mm256_movemask_epi8(cmp) as u32;
                 return len + (!mask).trailing_zeros() as usize;
@@ -521,8 +463,6 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
 unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
 
-    // Fail fast for short matches (common case in greedy/lazy parsing).
-    // This avoids loading the second 64-byte chunk if the first one mismatches.
     if len + 64 <= max_len {
         let v1 = _mm512_loadu_si512(a as *const _);
         let v2 = _mm512_loadu_si512(b as *const _);
@@ -533,8 +473,6 @@ unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize 
         len += 64;
     }
 
-    // Optimize: Unroll loop to process 128 bytes per iteration.
-    // This reduces loop overhead and allows pipelining of loads.
     while len + 128 <= max_len {
         let v1 = _mm512_loadu_si512(a.add(len) as *const _);
         let v2 = _mm512_loadu_si512(b.add(len) as *const _);
@@ -572,8 +510,6 @@ unsafe fn match_len_avx512(a: *const u8, b: *const u8, max_len: usize) -> usize 
 unsafe fn match_len_avx10(a: *const u8, b: *const u8, max_len: usize) -> usize {
     let mut len = 0;
 
-    // Fail fast for short matches.
-    // Checks the first 32 bytes to avoid loading 96 extra bytes for short matches.
     if len + 32 <= max_len {
         let v1 = _mm256_loadu_si256(a as *const _);
         let v2 = _mm256_loadu_si256(b as *const _);
@@ -584,9 +520,6 @@ unsafe fn match_len_avx10(a: *const u8, b: *const u8, max_len: usize) -> usize {
         len += 32;
     }
 
-    // Optimize: Unroll loop to process 128 bytes per iteration using 256-bit vectors.
-    // This maintains throughput while avoiding potential frequency throttling associated
-    // with 512-bit vectors on some architectures, and aligns with AVX10 philosophy.
     while len + 128 <= max_len {
         let v1 = _mm256_loadu_si256(a.add(len) as *const _);
         let v2 = _mm256_loadu_si256(b.add(len) as *const _);
@@ -668,14 +601,9 @@ unsafe fn match_len_neon(a: *const u8, b: *const u8, max_len: usize) -> usize {
     len + match_len_sw(a.add(len), b.add(len), max_len - len)
 }
 
-// Selects the best available match length implementation at runtime.
-// This is called once during initialization to avoid checking CPU features
-// inside the compression loop.
 fn get_match_len_strategy() -> MatchLenStrategy {
     #[cfg(target_arch = "x86_64")]
     {
-        // Prioritize AVX10/256-bit implementation if AVX512VL is available.
-        // This avoids frequency throttling on hybrid/consumer CPUs while still using AVX512 features.
         if is_x86_feature_detected!("avx512vl") && is_x86_feature_detected!("avx512bw") {
             return MatchLenStrategy::Avx10;
         }
@@ -717,9 +645,6 @@ impl MatchFinder {
 
     pub fn reset(&mut self) {
         self.hash_tab.fill(-1);
-        // Optimization: prev_tab doesn't need to be cleared because it's only accessed
-        // via chains starting from hash_tab (which is cleared). New insertions overwrite
-        // prev_tab entries before linking them.
         self.base_offset = 0;
     }
 
@@ -749,8 +674,6 @@ impl MatchFinder {
             return (0, 0);
         }
 
-        // Optimization: Pre-calculate whether it's safe to read 4 bytes at `pos`.
-        // This is used to optimize the loop below.
         let safe_to_read_u32 = pos + 4 <= data.len();
 
         let src = data.as_ptr().add(pos);
@@ -1128,7 +1051,6 @@ impl HtMatchFinder {
             return (0, 0);
         }
 
-        // Optimization: Pre-calculate whether it's safe to read 4 bytes at `pos`.
         let safe_to_read_u32 = pos + 4 <= data.len();
 
         unsafe {
@@ -1189,7 +1111,6 @@ impl HtMatchFinder {
                     #[cfg(target_arch = "aarch64")]
                     MatchLenStrategy::Neon => match_len_neon(match_ptr, src, max_len),
                 };
-                // len >= 3 is guaranteed because src_val == match_val implies the first 3 bytes match.
                 return (len, offset);
             }
         }
@@ -1218,9 +1139,81 @@ impl HtMatchFinder {
     }
 
     pub fn skip_positions(&mut self, _data: &[u8], _pos: usize, _count: usize) {
-        // For HtMatchFinder (Level 1), skipping hash updates inside matches provides
-        // a massive speed boost with minimal compression loss.
     }
+}
+
+trait MatchVisitor {
+    fn on_hash3_match(&mut self, len: usize, offset: usize);
+    fn on_match(&mut self, len: usize, offset: usize);
+}
+
+struct BestMatchVisitor {
+    best_len: usize,
+    best_offset: usize,
+}
+
+impl BestMatchVisitor {
+    fn new() -> Self {
+        Self {
+            best_len: 0,
+            best_offset: 0,
+        }
+    }
+}
+
+impl MatchVisitor for BestMatchVisitor {
+    #[inline(always)]
+    fn on_hash3_match(&mut self, len: usize, offset: usize) {
+        self.best_len = len;
+        self.best_offset = offset;
+    }
+
+    #[inline(always)]
+    fn on_match(&mut self, len: usize, offset: usize) {
+        if len > self.best_len {
+            self.best_len = len;
+            self.best_offset = offset;
+        }
+    }
+}
+
+struct AllMatchesVisitor<'a> {
+    matches: &'a mut Vec<(u16, u16)>,
+    best_len: usize,
+}
+
+impl<'a> AllMatchesVisitor<'a> {
+    fn new(matches: &'a mut Vec<(u16, u16)>) -> Self {
+        Self {
+            matches,
+            best_len: 3,
+        }
+    }
+}
+
+impl<'a> MatchVisitor for AllMatchesVisitor<'a> {
+    #[inline(always)]
+    fn on_hash3_match(&mut self, len: usize, offset: usize) {
+        self.matches.push((len as u16, offset as u16));
+    }
+
+    #[inline(always)]
+    fn on_match(&mut self, len: usize, offset: usize) {
+        if len > self.best_len {
+            self.best_len = len;
+            self.matches.push((len as u16, offset as u16));
+        }
+    }
+}
+
+struct NoOpVisitor;
+
+impl MatchVisitor for NoOpVisitor {
+    #[inline(always)]
+    fn on_hash3_match(&mut self, _len: usize, _offset: usize) {}
+
+    #[inline(always)]
+    fn on_match(&mut self, _len: usize, _offset: usize) {}
 }
 
 pub struct BtMatchFinder {
@@ -1245,8 +1238,6 @@ impl BtMatchFinder {
     pub fn reset(&mut self) {
         self.hash3_tab.fill([-1; 2]);
         self.hash4_tab.fill(-1);
-        // Optimization: child_tab doesn't need to be cleared because it's only accessed
-        // via tree traversal starting from hash_tab (which is cleared).
         self.base_offset = 0;
     }
 
@@ -1261,21 +1252,21 @@ impl BtMatchFinder {
     }
 
     #[inline(always)]
-    unsafe fn find_match_impl<M: MatchLen>(
+    unsafe fn advance_one_byte_generic<M: MatchLen, V: MatchVisitor>(
         &mut self,
         data: &[u8],
         pos: usize,
-        max_depth: usize,
+        max_len: usize,
         nice_len: usize,
-    ) -> (usize, usize) {
+        max_depth: usize,
+        mut visitor: V,
+    ) -> V {
         if pos.checked_add(4).map_or(true, |end| end > data.len()) {
-            return (0, 0);
+            return visitor;
         }
 
         let src = data.as_ptr().add(pos);
         let val = src.cast::<u32>().read_unaligned();
-        // Optimization: Use little-endian load and mask to get first 3 bytes.
-        // This is faster than `val.to_be() >> 8` (bswap + shift) and consistent with MatchFinder.
         let h3 = (val.to_le() & 0xFFFFFF).wrapping_mul(0x1E35A7BD);
         let h3 = (h3 >> 16) as usize;
 
@@ -1291,9 +1282,6 @@ impl BtMatchFinder {
 
         let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
 
-        let mut best_len = 0;
-        let mut best_offset = 0;
-
         if cur_node_3 != -1 && cur_node_3 > cutoff && (cur_node_3 as usize) >= self.base_offset {
             let p_abs = cur_node_3 as usize;
             let p_rel = p_abs - self.base_offset;
@@ -1302,8 +1290,7 @@ impl BtMatchFinder {
                 && *match_ptr.add(1) == *src.add(1)
                 && *match_ptr.add(2) == *src.add(2)
             {
-                best_len = 3;
-                best_offset = abs_pos - p_abs;
+                visitor.on_hash3_match(3, abs_pos - p_abs);
             } else if cur_node_3_2 != -1
                 && cur_node_3_2 > cutoff
                 && (cur_node_3_2 as usize) >= self.base_offset
@@ -1315,8 +1302,7 @@ impl BtMatchFinder {
                     && *match_ptr_2.add(1) == *src.add(1)
                     && *match_ptr_2.add(2) == *src.add(2)
                 {
-                    best_len = 3;
-                    best_offset = abs_pos - p2_abs;
+                    visitor.on_hash3_match(3, abs_pos - p2_abs);
                 }
             }
         }
@@ -1328,174 +1314,10 @@ impl BtMatchFinder {
 
         if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
             *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
-            return (best_len, best_offset);
+            return visitor;
         }
 
         let mut depth_remaining = max_depth;
-        let max_len_clamped = min(DEFLATE_MAX_MATCH_LEN, data.len() - pos);
-
-        let mut pending_lt_node = child_idx;
-        let mut pending_lt_child = 0;
-        let mut pending_gt_node = child_idx;
-        let mut pending_gt_child = 1;
-
-        loop {
-            let p_abs = cur_node as usize;
-            let p_child_idx = p_abs & (MATCHFINDER_WINDOW_SIZE - 1);
-            let p_rel = p_abs - self.base_offset;
-            let match_ptr = data.as_ptr().add(p_rel);
-
-            let len = M::calc(match_ptr, src, max_len_clamped);
-
-            if len > best_len {
-                best_len = len;
-                best_offset = abs_pos - p_abs;
-                if len >= nice_len || len == max_len_clamped {
-                    let children = *self.child_tab.get_unchecked(p_child_idx);
-                    (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
-                        children[0];
-                    (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
-                        children[1];
-                    return (best_len, best_offset);
-                }
-            }
-
-            if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
-                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = cur_node;
-                pending_lt_node = p_child_idx;
-                pending_lt_child = 1;
-                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[1];
-            } else {
-                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = cur_node;
-                pending_gt_node = p_child_idx;
-                pending_gt_child = 0;
-                cur_node = (*self.child_tab.get_unchecked(p_child_idx))[0];
-            }
-
-            if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                return (best_len, best_offset);
-            }
-
-            depth_remaining -= 1;
-            if depth_remaining == 0 {
-                (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
-                (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                return (best_len, best_offset);
-            }
-        }
-    }
-
-    pub fn find_match(
-        &mut self,
-        data: &[u8],
-        pos: usize,
-        max_depth: usize,
-        nice_len: usize,
-    ) -> (usize, usize) {
-        unsafe {
-            match self.match_len {
-                MatchLenStrategy::Scalar => {
-                    self.find_match_impl::<ScalarStrategy>(data, pos, max_depth, nice_len)
-                }
-                #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => {
-                    self.find_match_impl::<Sse2Strategy>(data, pos, max_depth, nice_len)
-                }
-                #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => {
-                    self.find_match_impl::<Avx2Strategy>(data, pos, max_depth, nice_len)
-                }
-                #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => {
-                    self.find_match_impl::<Avx512Strategy>(data, pos, max_depth, nice_len)
-                }
-                #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => {
-                    self.find_match_impl::<Avx10Strategy>(data, pos, max_depth, nice_len)
-                }
-                #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => {
-                    self.find_match_impl::<NeonStrategy>(data, pos, max_depth, nice_len)
-                }
-            }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn advance_one_byte_impl<M: MatchLen>(
-        &mut self,
-        data: &[u8],
-        pos: usize,
-        max_len: usize,
-        nice_len: usize,
-        max_depth: usize,
-        matches: &mut Vec<(u16, u16)>,
-        record_matches: bool,
-    ) {
-        if pos.checked_add(4).map_or(true, |end| end > data.len()) {
-            return;
-        }
-
-        let src = data.as_ptr().add(pos);
-        let val = src.cast::<u32>().read_unaligned();
-        // Optimization: Use little-endian load and mask to get first 3 bytes.
-        let h3 = (val.to_le() & 0xFFFFFF).wrapping_mul(0x1E35A7BD);
-        let h3 = (h3 >> 16) as usize;
-
-        let h4 = val.wrapping_mul(0x1E35A7BD);
-        let h4 = (h4 >> 16) as usize;
-
-        let abs_pos = self.base_offset + pos;
-
-        let cur_node_3 = (*self.hash3_tab.get_unchecked(h3))[0];
-        (*self.hash3_tab.get_unchecked_mut(h3))[0] = abs_pos as i32;
-        let cur_node_3_2 = (*self.hash3_tab.get_unchecked(h3))[1];
-        (*self.hash3_tab.get_unchecked_mut(h3))[1] = cur_node_3;
-
-        let cutoff = (abs_pos as i32).wrapping_sub(MATCHFINDER_WINDOW_SIZE as i32);
-
-        if record_matches {
-            if cur_node_3 != -1 && cur_node_3 > cutoff && (cur_node_3 as usize) >= self.base_offset
-            {
-                let p_abs = cur_node_3 as usize;
-                let p_rel = p_abs - self.base_offset;
-                let match_ptr = data.as_ptr().add(p_rel);
-                if *match_ptr == *src
-                    && *match_ptr.add(1) == *src.add(1)
-                    && *match_ptr.add(2) == *src.add(2)
-                {
-                    matches.push((3, (abs_pos - p_abs) as u16));
-                } else if cur_node_3_2 != -1
-                    && cur_node_3_2 > cutoff
-                    && (cur_node_3_2 as usize) >= self.base_offset
-                {
-                    let p2_abs = cur_node_3_2 as usize;
-                    let p2_rel = p2_abs - self.base_offset;
-                    let match_ptr_2 = data.as_ptr().add(p2_rel);
-                    if *match_ptr_2 == *src
-                        && *match_ptr_2.add(1) == *src.add(1)
-                        && *match_ptr_2.add(2) == *src.add(2)
-                    {
-                        matches.push((3, (abs_pos - p2_abs) as u16));
-                    }
-                }
-            }
-        }
-
-        let mut cur_node = *self.hash4_tab.get_unchecked(h4);
-        *self.hash4_tab.get_unchecked_mut(h4) = abs_pos as i32;
-
-        let child_idx = abs_pos & (MATCHFINDER_WINDOW_SIZE - 1);
-
-        if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
-            *self.child_tab.get_unchecked_mut(child_idx) = [-1, -1];
-            return;
-        }
-
-        let mut depth_remaining = max_depth;
-        let mut best_len = 3;
 
         let mut pending_lt_node = child_idx;
         let mut pending_lt_child = 0;
@@ -1513,18 +1335,15 @@ impl BtMatchFinder {
 
             let len = M::calc(match_ptr, src, max_len_clamped);
 
-            if record_matches && len > best_len {
-                best_len = len;
-                matches.push((len as u16, (abs_pos - p_abs) as u16));
-            }
+            visitor.on_match(len, abs_pos - p_abs);
 
-            if len >= nice_len {
+            if len >= nice_len || len == max_len_clamped {
                 let children = *self.child_tab.get_unchecked(p_child_idx);
                 (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] =
                     children[0];
                 (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] =
                     children[1];
-                return;
+                return visitor;
             }
 
             if len < max_len_clamped && *match_ptr.add(len) < *src.add(len) {
@@ -1542,89 +1361,229 @@ impl BtMatchFinder {
             if cur_node == -1 || cur_node <= cutoff || (cur_node as usize) < self.base_offset {
                 (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
                 (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                return;
+                return visitor;
             }
 
             depth_remaining -= 1;
             if depth_remaining == 0 {
                 (*self.child_tab.get_unchecked_mut(pending_lt_node))[pending_lt_child] = -1;
                 (*self.child_tab.get_unchecked_mut(pending_gt_node))[pending_gt_child] = -1;
-                return;
+                return visitor;
             }
         }
     }
 
-    pub fn advance_one_byte(
+    pub fn find_match(
         &mut self,
         data: &[u8],
         pos: usize,
-        max_len: usize,
-        nice_len: usize,
         max_depth: usize,
-        matches: &mut Vec<(u16, u16)>,
-        record_matches: bool,
-    ) {
+        nice_len: usize,
+    ) -> (usize, usize) {
         unsafe {
-            match self.match_len {
-                MatchLenStrategy::Scalar => self.advance_one_byte_impl::<ScalarStrategy>(
+            let visitor = BestMatchVisitor::new();
+            let visitor = match self.match_len {
+                MatchLenStrategy::Scalar => self.advance_one_byte_generic::<ScalarStrategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Sse2 => self.advance_one_byte_impl::<Sse2Strategy>(
+                MatchLenStrategy::Sse2 => self.advance_one_byte_generic::<Sse2Strategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx2 => self.advance_one_byte_impl::<Avx2Strategy>(
+                MatchLenStrategy::Avx2 => self.advance_one_byte_generic::<Avx2Strategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx512 => self.advance_one_byte_impl::<Avx512Strategy>(
+                MatchLenStrategy::Avx512 => self.advance_one_byte_generic::<Avx512Strategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
                 #[cfg(target_arch = "x86_64")]
-                MatchLenStrategy::Avx10 => self.advance_one_byte_impl::<Avx10Strategy>(
+                MatchLenStrategy::Avx10 => self.advance_one_byte_generic::<Avx10Strategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
                 #[cfg(target_arch = "aarch64")]
-                MatchLenStrategy::Neon => self.advance_one_byte_impl::<NeonStrategy>(
+                MatchLenStrategy::Neon => self.advance_one_byte_generic::<NeonStrategy, _>(
                     data,
                     pos,
-                    max_len,
+                    DEFLATE_MAX_MATCH_LEN,
                     nice_len,
                     max_depth,
-                    matches,
-                    record_matches,
+                    visitor,
                 ),
+            };
+            (visitor.best_len, visitor.best_offset)
+        }
+    }
+
+    pub fn skip_match(&mut self, data: &[u8], pos: usize, max_depth: usize, nice_len: usize) {
+        unsafe {
+            let visitor = NoOpVisitor;
+            match self.match_len {
+                MatchLenStrategy::Scalar => {
+                    self.advance_one_byte_generic::<ScalarStrategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Sse2 => {
+                    self.advance_one_byte_generic::<Sse2Strategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx2 => {
+                    self.advance_one_byte_generic::<Avx2Strategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx512 => {
+                    self.advance_one_byte_generic::<Avx512Strategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx10 => {
+                    self.advance_one_byte_generic::<Avx10Strategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+                #[cfg(target_arch = "aarch64")]
+                MatchLenStrategy::Neon => {
+                    self.advance_one_byte_generic::<NeonStrategy, _>(
+                        data,
+                        pos,
+                        DEFLATE_MAX_MATCH_LEN,
+                        nice_len,
+                        max_depth,
+                        visitor,
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn find_matches(
+        &mut self,
+        data: &[u8],
+        pos: usize,
+        max_depth: usize,
+        nice_len: usize,
+        matches: &mut Vec<(u16, u16)>,
+    ) -> (usize, usize) {
+        matches.clear();
+        unsafe {
+            let visitor = AllMatchesVisitor::new(matches);
+            let visitor = match self.match_len {
+                MatchLenStrategy::Scalar => self.advance_one_byte_generic::<ScalarStrategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Sse2 => self.advance_one_byte_generic::<Sse2Strategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx2 => self.advance_one_byte_generic::<Avx2Strategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx512 => self.advance_one_byte_generic::<Avx512Strategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+                #[cfg(target_arch = "x86_64")]
+                MatchLenStrategy::Avx10 => self.advance_one_byte_generic::<Avx10Strategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+                #[cfg(target_arch = "aarch64")]
+                MatchLenStrategy::Neon => self.advance_one_byte_generic::<NeonStrategy, _>(
+                    data,
+                    pos,
+                    DEFLATE_MAX_MATCH_LEN,
+                    nice_len,
+                    max_depth,
+                    visitor,
+                ),
+            };
+            if let Some(&(len, offset)) = visitor.matches.last() {
+                (len as usize, offset as usize)
+            } else {
+                (0, 0)
             }
         }
     }
