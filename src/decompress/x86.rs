@@ -115,6 +115,91 @@ unsafe fn decompress_offset_18(out_next: *mut u8, src: *const u8, v: __m128i, le
     }
 }
 
+// Optimization: Specialized implementation for offset 58.
+// We unroll the loop to write 128 bytes (8 vectors) per iteration.
+// This matches the generic decompress_offset_cycle4 logic but reduces loop overhead.
+// SHIFT = 6. 48 - 6 = 42.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn decompress_offset_58(out_next: *mut u8, src: *const u8, v: __m128i, length: usize) {
+    let v1_init = _mm_loadu_si128(src.add(16) as *const __m128i);
+    let v2_init = _mm_loadu_si128(src.add(32) as *const __m128i);
+    let v_tail = _mm_loadu_si128(src.add(42) as *const __m128i);
+    let mut v3 = _mm_alignr_epi8::<6>(v, v_tail);
+    let mut v0 = v;
+    let mut v1 = v1_init;
+    let mut v2 = v2_init;
+
+    let mut copied = 16;
+    let stride = 128;
+    while copied + stride <= length {
+        let nv0 = _mm_alignr_epi8::<6>(v1, v0);
+        let nv1 = _mm_alignr_epi8::<6>(v2, v1);
+        let nv2 = _mm_alignr_epi8::<6>(v3, v2);
+        let nv3 = _mm_alignr_epi8::<6>(nv0, v3);
+
+        let nnv0 = _mm_alignr_epi8::<6>(nv1, nv0);
+        let nnv1 = _mm_alignr_epi8::<6>(nv2, nv1);
+        let nnv2 = _mm_alignr_epi8::<6>(nv3, nv2);
+        let nnv3 = _mm_alignr_epi8::<6>(nnv0, nv3);
+
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v3);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, nv0);
+
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, nv1);
+        _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, nv2);
+        _mm_storeu_si128(out_next.add(copied + 96) as *mut __m128i, nv3);
+        _mm_storeu_si128(out_next.add(copied + 112) as *mut __m128i, nnv0);
+
+        v0 = nnv0;
+        v1 = nnv1;
+        v2 = nnv2;
+        v3 = nnv3;
+        copied += stride;
+    }
+
+    loop {
+        if copied + 16 > length {
+            break;
+        }
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        copied += 16;
+
+        if copied + 16 > length {
+            break;
+        }
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v2);
+        copied += 16;
+
+        if copied + 16 > length {
+            break;
+        }
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v3);
+        copied += 16;
+
+        if copied + 16 > length {
+            break;
+        }
+        let next_v0 = _mm_alignr_epi8::<6>(v1, v0);
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, next_v0);
+        copied += 16;
+
+        let next_v1 = _mm_alignr_epi8::<6>(v2, v1);
+        let next_v2 = _mm_alignr_epi8::<6>(v3, v2);
+        let next_v3 = _mm_alignr_epi8::<6>(next_v0, v3);
+        v0 = next_v0;
+        v1 = next_v1;
+        v2 = next_v2;
+        v3 = next_v3;
+    }
+
+    if copied < length {
+        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+    }
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
 unsafe fn decompress_fill_pattern_16(out_next: *mut u8, v: __m128i, src: *const u8, length: usize) {
@@ -2011,12 +2096,12 @@ pub unsafe fn decompress_bmi2_ptr(
                                                 57 => decompress_offset_cycle4::<7>(
                                                     out_next, src, v, length,
                                                 ),
-                                                58 => decompress_offset_cycle4::<6>(
-                                                    out_next, src, v, length,
-                                                ),
                                                 59 => decompress_offset_cycle4::<5>(
                                                     out_next, src, v, length,
                                                 ),
+                                                58 => {
+                                                    decompress_offset_58(out_next, src, v, length)
+                                                }
                                                 61 => decompress_offset_cycle4::<3>(
                                                     out_next, src, v, length,
                                                 ),
