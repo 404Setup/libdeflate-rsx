@@ -284,9 +284,14 @@ unsafe fn decompress_offset_alignr_cycle<const SHIFT: i32>(
     out_next: *mut u8,
     src: *const u8,
     length: usize,
-    mut v_align: __m128i,
     mut v_prev: __m128i,
 ) {
+    // Optimization: Load `v_align` directly from `src` based on `SHIFT`.
+    // The `SHIFT` constant is derived such that `src + (16 - SHIFT)` always corresponds
+    // to `out_next - 16`, which is valid historical data (since `offset >= 16`).
+    // This eliminates complex setup logic (scalar loads, shifts, inserts) at call sites.
+    let mut v_align = _mm_loadu_si128(src.add(16 - SHIFT as usize) as *const __m128i);
+
     let mut copied = 16;
     while copied + 128 <= length {
         let v_next0 = _mm_alignr_epi8::<SHIFT>(v_prev, v_align);
@@ -1335,116 +1340,60 @@ pub unsafe fn decompress_bmi2_ptr(
                                                     decompress_offset_18(out_next, src, v, length)
                                                 }
                                                 19 => {
-                                                    let c1 = *src.add(16);
-                                                    let c2 = *src.add(17);
-                                                    let c3 = *src.add(18);
-                                                    let mut v_align =
-                                                        _mm_insert_epi8(v, c1 as i32, 13);
-                                                    v_align =
-                                                        _mm_insert_epi8(v_align, c2 as i32, 14);
-                                                    v_align =
-                                                        _mm_insert_epi8(v_align, c3 as i32, 15);
                                                     decompress_offset_alignr_cycle::<13>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 20 => {
                                                     decompress_offset_20(out_next, src, v, length)
                                                 }
                                                 21 => {
-                                                    // Optimization: Load from src + 13 (out - 8) instead of src + 16 (out - 5).
-                                                    // src + 16 overlaps with the recent store at out (range [0, 3)), causing STLF stall.
-                                                    // src + 13 is out - 8, reading [-8, 0), which is safe from STLF.
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(13) as *const u64
-                                                    );
-                                                    // Shift right by 3 bytes (24 bits) to align byte 3 (from src+16) to pos 0.
-                                                    let v_temp =
-                                                        _mm_cvtsi64_si128((val >> 24) as i64);
-                                                    let v_align = _mm_slli_si128(v_temp, 11);
                                                     decompress_offset_alignr_cycle::<11>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 22 => {
-                                                    // Optimization: Use single u64 load from out - 8 (src + 14) to avoid STLF
-                                                    // and reduce instruction count compared to u32 + u16.
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(14) as *const u64
-                                                    );
-                                                    // Shift right by 2 bytes (16 bits) to align byte 2 (from src+16) to pos 0.
-                                                    let v_temp =
-                                                        _mm_cvtsi64_si128((val >> 16) as i64);
-                                                    let v_tail = _mm_slli_si128(v_temp, 10);
                                                     decompress_offset_alignr_cycle::<10>(
-                                                        out_next, src, length, v_tail, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 23 => {
-                                                    // Optimization: Use single u64 load from out - 8 (src + 15).
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(15) as *const u64
-                                                    );
-                                                    // Shift right by 1 byte (8 bits).
-                                                    let v_temp =
-                                                        _mm_cvtsi64_si128((val >> 8) as i64);
-                                                    let v_align = _mm_slli_si128(v_temp, 9);
                                                     decompress_offset_alignr_cycle::<9>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 24 => {
                                                     decompress_offset_24(out_next, src, v, length)
                                                 }
                                                 25 => {
-                                                    let val = std::ptr::read_unaligned(
-                                                        src.add(16) as *const u64
-                                                    );
-                                                    let c = *src.add(24);
-                                                    let v_temp = _mm_cvtsi64_si128(val as i64);
-                                                    let v_temp =
-                                                        _mm_insert_epi8(v_temp, c as i32, 8);
-                                                    let v_align = _mm_slli_si128(v_temp, 7);
                                                     decompress_offset_alignr_cycle::<7>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 26 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(10) as *const __m128i
-                                                    );
                                                     decompress_offset_alignr_cycle::<6>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 27 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(11) as *const __m128i
-                                                    );
                                                     decompress_offset_alignr_cycle::<5>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 28 => {
                                                     decompress_offset_28(out_next, src, v, length)
                                                 }
                                                 29 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(13) as *const __m128i
-                                                    );
                                                     decompress_offset_alignr_cycle::<3>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 30 => {
                                                     decompress_offset_30(out_next, src, v, length)
                                                 }
                                                 31 => {
-                                                    let v_align = _mm_loadu_si128(
-                                                        src.add(15) as *const __m128i
-                                                    );
                                                     decompress_offset_alignr_cycle::<1>(
-                                                        out_next, src, length, v_align, v,
+                                                        out_next, src, length, v,
                                                     );
                                                 }
                                                 32 => {
