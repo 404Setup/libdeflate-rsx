@@ -590,16 +590,21 @@ unsafe fn decompress_offset_3(out_next: *mut u8, src: *const u8, length: usize) 
     let v_pat = _mm_shuffle_epi8(v_raw, mask);
 
     let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 3) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 6) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 12) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 21) as *mut __m128i, v_pat);
-        copied += 24;
+    // By precomputing rotated vectors, we can write 48 bytes using 3 aligned stores
+    // (stride 16), instead of 8 overlapping stores (stride 3). This reduces store
+    // traffic by ~5.3x.
+    if length >= 48 {
+        let mask1 = _mm_setr_epi8(1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1);
+        let mask2 = _mm_setr_epi8(2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2);
+        let v_pat1 = _mm_shuffle_epi8(v_raw, mask1);
+        let v_pat2 = _mm_shuffle_epi8(v_raw, mask2);
+
+        while copied + 48 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
+            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
+            copied += 48;
+        }
     }
 
     while copied + 16 <= length {
