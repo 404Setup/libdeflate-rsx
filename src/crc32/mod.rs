@@ -12,6 +12,69 @@ pub fn crc32_slice1(mut crc: u32, p: &[u8]) -> u32 {
 pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
     let mut len = p.len();
     let mut ptr = p.as_ptr();
+
+    // Optimization: Unroll loop to process 16 bytes per iteration.
+    // This allows lookups for the second 8-byte chunk (which depend only on data)
+    // to be interleaved with the dependency chain of the first 8-byte chunk.
+    while len >= 16 {
+        let va = u64::from_le(unsafe { std::ptr::read_unaligned(ptr as *const u64) });
+        let vb = u64::from_le(unsafe { std::ptr::read_unaligned(ptr.add(8) as *const u64) });
+
+        let va1 = va as u32;
+        let va2 = (va >> 32) as u32;
+        let vb1 = vb as u32;
+        let vb2 = (vb >> 32) as u32;
+
+        let idx0 = ((crc ^ va1) as u8) as usize;
+        let idx1 = (((crc ^ va1) >> 8) as u8) as usize;
+        let idx2 = (((crc ^ va1) >> 16) as u8) as usize;
+        let idx3 = (((crc ^ va1) >> 24) as u8) as usize;
+        let idx4 = (va2 as u8) as usize;
+        let idx5 = ((va2 >> 8) as u8) as usize;
+        let idx6 = ((va2 >> 16) as u8) as usize;
+        let idx7 = ((va2 >> 24) as u8) as usize;
+
+        // Prefetch/compute indices for the second half that don't depend on CRC
+        let idx12 = (vb2 as u8) as usize;
+        let idx13 = ((vb2 >> 8) as u8) as usize;
+        let idx14 = ((vb2 >> 16) as u8) as usize;
+        let idx15 = ((vb2 >> 24) as u8) as usize;
+
+        let t0 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x700 + idx0) };
+        let t1 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x600 + idx1) };
+        let t2 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x500 + idx2) };
+        let t3 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x400 + idx3) };
+        let t4 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx4) };
+        let t5 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx5) };
+        let t6 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx6) };
+        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx7) };
+
+        // Start independent lookups for the second chunk early
+        let t12 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx12) };
+        let t13 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx13) };
+        let t14 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx14) };
+        let t15 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx15) };
+
+        crc = ((t0 ^ t1) ^ (t2 ^ t3)) ^ ((t4 ^ t5) ^ (t6 ^ t7));
+
+        let idx8 = ((crc ^ vb1) as u8) as usize;
+        let idx9 = (((crc ^ vb1) >> 8) as u8) as usize;
+        let idx10 = (((crc ^ vb1) >> 16) as u8) as usize;
+        let idx11 = (((crc ^ vb1) >> 24) as u8) as usize;
+
+        let t8 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x700 + idx8) };
+        let t9 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x600 + idx9) };
+        let t10 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x500 + idx10) };
+        let t11 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x400 + idx11) };
+
+        crc = ((t8 ^ t9) ^ (t10 ^ t11)) ^ ((t12 ^ t13) ^ (t14 ^ t15));
+
+        unsafe {
+            ptr = ptr.add(16);
+        }
+        len -= 16;
+    }
+
     while len >= 8 {
         let v = u64::from_le(unsafe { std::ptr::read_unaligned(ptr as *const u64) });
         let v1 = v as u32;
