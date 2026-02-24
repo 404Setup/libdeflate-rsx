@@ -62,7 +62,10 @@ impl<W: Write + Send> DeflateEncoder<W> {
                 let chunk = chunks[0];
                 let compressor = &mut self.compressors[0];
                 let output = &mut self.output_buffers[0];
-                let bound = Compressor::deflate_compress_bound(chunk.len());
+                let mut bound = Compressor::deflate_compress_bound(chunk.len());
+                if !final_block {
+                    bound += 5;
+                }
                 if output.len() < bound {
                     output
                         .try_reserve(bound - output.len())
@@ -100,7 +103,10 @@ impl<W: Write + Send> DeflateEncoder<W> {
                     .zip(self.output_buffers.par_iter_mut())
                     .enumerate()
                     .map(|(i, ((&chunk, compressor), output))| {
-                        let bound = Compressor::deflate_compress_bound(chunk.len());
+                        let mut bound = Compressor::deflate_compress_bound(chunk.len());
+                        if !(final_block && i == num_chunks - 1) {
+                            bound += 5;
+                        }
                         if output.len() < bound {
                             output
                                 .try_reserve(bound - output.len())
@@ -149,7 +155,10 @@ impl<W: Write + Send> DeflateEncoder<W> {
 
             let compressor = &mut self.compressors[0];
             let output = &mut self.output_buffers[0];
-            let bound = Compressor::deflate_compress_bound(self.buffer.len());
+            let mut bound = Compressor::deflate_compress_bound(self.buffer.len());
+            if !final_block {
+                bound += 5;
+            }
             if output.len() < bound {
                 output
                     .try_reserve(bound - output.len())
