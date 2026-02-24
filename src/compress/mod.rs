@@ -455,6 +455,7 @@ pub struct Compressor {
     dp_costs: Vec<u32>,
     dp_path: Vec<u32>,
     split_stats: BlockSplitStats,
+    matches: Vec<(u16, u16)>,
 }
 
 impl Compressor {
@@ -498,6 +499,11 @@ impl Compressor {
                 Vec::new()
             },
             split_stats: BlockSplitStats::new(),
+            matches: if level >= 10 {
+                Vec::with_capacity(32)
+            } else {
+                Vec::new()
+            },
         };
         c.init_params();
         c
@@ -960,7 +966,6 @@ impl Compressor {
         }
 
         mf.reset();
-        let mut matches = Vec::new();
         let mut pos = 0;
         while pos < processed {
             let cur_cost = self.dp_costs[pos];
@@ -980,10 +985,10 @@ impl Compressor {
                 pos,
                 self.max_search_depth,
                 self.nice_match_length,
-                &mut matches,
+                &mut self.matches,
             );
             let mut best_len = 0;
-            for &(len, offset) in &matches {
+            for &(len, offset) in &self.matches {
                 let len = len as usize;
                 if pos + len > processed {
                     continue;
@@ -1757,7 +1762,6 @@ impl Compressor {
         }
 
         mf.reset();
-        let mut matches = Vec::new();
         let mut pos = 0;
         while pos < processed {
             let cur_cost = self.dp_costs[pos];
@@ -1777,10 +1781,10 @@ impl Compressor {
                 pos,
                 self.max_search_depth,
                 self.nice_match_length,
-                &mut matches,
+                &mut self.matches,
             );
             let mut best_len = 0;
-            for &(len, offset) in &matches {
+            for &(len, offset) in &self.matches {
                 let len = len as usize;
                 if pos + len > processed {
                     continue;
