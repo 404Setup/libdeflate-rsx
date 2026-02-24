@@ -1785,9 +1785,10 @@ impl Compressor {
             let mut best_len = 0;
             for &(len, offset) in &self.matches {
                 let len = len as usize;
-                if pos + len > processed {
-                    continue;
-                }
+                // Optimization: The bounds check `if pos + len > processed { continue; }` is redundant.
+                // `MatchFinder` guarantees that any match returned fits within the `block_input` buffer.
+                // Since `processed` equals `block_input.len()`, `pos + len` is always <= `processed`.
+                debug_assert!(pos + len <= processed);
                 if len > best_len {
                     best_len = len;
                 }
