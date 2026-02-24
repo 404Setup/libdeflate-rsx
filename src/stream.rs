@@ -66,7 +66,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
                 if output.len() < bound {
                     output
                         .try_reserve(bound - output.len())
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                        .map_err(io::Error::other)?;
                     // SAFETY: We just reserved sufficient capacity. The compressor writes to
                     // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
                     unsafe {
@@ -91,7 +91,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
                         writer.write_all(&output[..size])?;
                     }
                 } else {
-                    return Err(io::Error::new(io::ErrorKind::Other, "Compression failed"));
+                    return Err(io::Error::other("Compression failed"));
                 }
             } else {
                 let compressed_chunks: Vec<io::Result<usize>> = chunks
@@ -104,7 +104,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
                         if output.len() < bound {
                             output
                                 .try_reserve(bound - output.len())
-                                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                                .map_err(io::Error::other)?;
                             // SAFETY: We just reserved sufficient capacity. The compressor writes to
                             // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
                             unsafe {
@@ -127,7 +127,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
                         if res == CompressResult::Success {
                             Ok(size)
                         } else {
-                            Err(io::Error::new(io::ErrorKind::Other, "Compression failed"))
+                            Err(io::Error::other("Compression failed"))
                         }
                     })
                     .collect();
@@ -153,7 +153,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
             if output.len() < bound {
                 output
                     .try_reserve(bound - output.len())
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                    .map_err(io::Error::other)?;
                 // SAFETY: We just reserved sufficient capacity. The compressor writes to
                 // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
                 unsafe {
@@ -178,7 +178,7 @@ impl<W: Write + Send> DeflateEncoder<W> {
                     writer.write_all(&output[..size])?;
                 }
             } else {
-                return Err(io::Error::new(io::ErrorKind::Other, "Compression failed"));
+                return Err(io::Error::other("Compression failed"));
             }
         }
 
@@ -265,8 +265,8 @@ impl<R: Read> Read for DeflateDecoder<R> {
         }
 
         loop {
-            if self.write_pos >= 64 * 1024 {
-                if self.read_pos >= 32 * 1024 {
+            if self.write_pos >= 64 * 1024
+                && self.read_pos >= 32 * 1024 {
                     self.window.copy_within(
                         self.read_pos - 32 * 1024..self.write_pos,
                         32 * 1024 - (self.read_pos - 32 * 1024),
@@ -278,7 +278,6 @@ impl<R: Read> Read for DeflateDecoder<R> {
                     self.write_pos = amount_to_keep;
                     self.read_pos -= shift;
                 }
-            }
 
             let mut output_full = false;
             if self.input_pos < self.input_cap {
@@ -340,7 +339,7 @@ impl<R: Read> Read for DeflateDecoder<R> {
                     if self.input_buffer.len() < 1024 * 1024 {
                         self.input_buffer.resize(self.input_buffer.len() * 2, 0);
                     } else {
-                        return Err(io::Error::new(io::ErrorKind::Other, "input buffer full"));
+                        return Err(io::Error::other("input buffer full"));
                     }
                 }
 

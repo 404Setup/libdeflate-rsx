@@ -8,7 +8,7 @@ pub struct Compressor {
 
 impl Compressor {
     pub fn new(level: i32) -> io::Result<Self> {
-        if level < 0 || level > 12 {
+        if !(0..=12).contains(&level) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Compression level must be between 0 and 12",
@@ -79,7 +79,7 @@ impl Compressor {
         let mut output = Vec::new();
         output
             .try_reserve_exact(bound)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         // Use spare_capacity_mut to avoid zero-initialization.
         // Since len is 0, this returns the entire capacity as MaybeUninit.
@@ -96,7 +96,7 @@ impl Compressor {
                 Ok(output)
             }
             CompressResult::InsufficientSpace => {
-                Err(io::Error::new(io::ErrorKind::Other, "Insufficient space"))
+                Err(io::Error::other("Insufficient space"))
             }
         }
     }
@@ -131,7 +131,7 @@ impl Compressor {
         if res == CompressResult::Success {
             Ok(size)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, error_msg))
+            Err(io::Error::other(error_msg))
         }
     }
 }
@@ -140,6 +140,12 @@ pub struct Decompressor {
     inner: InternalDecompressor,
     max_memory_limit: usize,
     limit_ratio: usize,
+}
+
+impl Default for Decompressor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decompressor {
@@ -239,7 +245,7 @@ impl Decompressor {
         let mut output = Vec::new();
         output
             .try_reserve_exact(expected_size)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         // Use spare_capacity_mut to avoid zero-initialization.
         let out_uninit = output.spare_capacity_mut();
@@ -304,8 +310,8 @@ fn is_overlapping(s1: &[u8], s2: &[u8]) -> bool {
     let p2 = s2.as_ptr() as usize;
     let len2 = s2.len();
 
-    let end1 = p1.checked_add(len1).unwrap_or(usize::MAX);
-    let end2 = p2.checked_add(len2).unwrap_or(usize::MAX);
+    let end1 = p1.saturating_add(len1);
+    let end2 = p2.saturating_add(len2);
 
     use std::cmp::{max, min};
     max(p1, p2) < min(end1, end2)

@@ -744,7 +744,7 @@ impl Compressor {
                                 ))
                             }
                         } else {
-                            Err(io::Error::new(io::ErrorKind::Other, "Compression failed"))
+                            Err(io::Error::other("Compression failed"))
                         }
                     },
                 )
@@ -814,7 +814,7 @@ impl Compressor {
         }
 
         mf.advance(input.len());
-        (total_bits + 7) / 8
+        total_bits.div_ceil(8)
     }
 
     fn calculate_block_size_fast<T: MatchFinderTrait>(
@@ -977,7 +977,7 @@ impl Compressor {
             let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
             if cur_cost + lit_cost < self.dp_costs[pos + 1] {
                 self.dp_costs[pos + 1] = cur_cost + lit_cost;
-                self.dp_path[pos + 1] = (1 as u32) | (0 as u32) << 16;
+                self.dp_path[pos + 1] = 1_u32;
             }
 
             mf.find_matches(
@@ -1074,7 +1074,7 @@ impl Compressor {
     pub fn compress_to_size(&mut self, input: &[u8], final_block: bool) -> usize {
         if self.compression_level == 0 {
             let num_blocks = input.len() / 65535
-                + if input.len() % 65535 != 0 || (input.len() == 0 && final_block) {
+                + if !input.len().is_multiple_of(65535) || (input.is_empty() && final_block) {
                     1
                 } else {
                     0
@@ -1099,7 +1099,7 @@ impl Compressor {
         mf: &mut T,
         input: &[u8],
         start_pos: usize,
-        lazy_depth: u32,
+        _lazy_depth: u32,
     ) -> usize {
         self.split_stats.reset();
         let mut in_idx = start_pos;
@@ -1206,14 +1206,12 @@ impl Compressor {
                     precode_freqs[17] += 1;
                     run -= min(run, 10);
                 }
-            } else {
-                if run >= 4 {
-                    precode_freqs[len as usize] += 1;
-                    run -= 1;
-                    while run >= 3 {
-                        precode_freqs[16] += 1;
-                        run -= min(run, 6);
-                    }
+            } else if run >= 4 {
+                precode_freqs[len as usize] += 1;
+                run -= 1;
+                while run >= 3 {
+                    precode_freqs[16] += 1;
+                    run -= min(run, 6);
                 }
             }
             while run > 0 {
@@ -1773,7 +1771,7 @@ impl Compressor {
             let lit_cost = self.litlen_lens[block_input[pos] as usize] as u32;
             if cur_cost + lit_cost < self.dp_costs[pos + 1] {
                 self.dp_costs[pos + 1] = cur_cost + lit_cost;
-                self.dp_path[pos + 1] = (1 as u32) | (0 as u32) << 16;
+                self.dp_path[pos + 1] = 1_u32;
             }
 
             mf.find_matches(
@@ -1914,19 +1912,17 @@ impl Compressor {
                     precode_freqs[17] += 1;
                     run -= c;
                 }
-            } else {
-                if run >= 4 {
-                    precode_items[num_precode_items] = (len as u16) << 8;
+            } else if run >= 4 {
+                precode_items[num_precode_items] = (len as u16) << 8;
+                num_precode_items += 1;
+                precode_freqs[len as usize] += 1;
+                run -= 1;
+                while run >= 3 {
+                    let c = min(run, 6);
+                    precode_items[num_precode_items] = (16 << 8) | ((c - 3) as u16);
                     num_precode_items += 1;
-                    precode_freqs[len as usize] += 1;
-                    run -= 1;
-                    while run >= 3 {
-                        let c = min(run, 6);
-                        precode_items[num_precode_items] = (16 << 8) | ((c - 3) as u16);
-                        num_precode_items += 1;
-                        precode_freqs[16] += 1;
-                        run -= c;
-                    }
+                    precode_freqs[16] += 1;
+                    run -= c;
                 }
             }
             while run > 0 {
@@ -1975,11 +1971,10 @@ impl Compressor {
                 if !bs.write_bits(extra, 3) {
                     return false;
                 }
-            } else if sym == 18 {
-                if !bs.write_bits(extra, 7) {
+            } else if sym == 18
+                && !bs.write_bits(extra, 7) {
                     return false;
                 }
-            }
         }
         true
     }
@@ -1992,7 +1987,8 @@ impl Compressor {
         self.offset_lens.copy_from_slice(&tables.offset_lens);
         self.litlen_table.copy_from_slice(&tables.litlen_table);
         self.offset_table.copy_from_slice(&tables.offset_table);
-        self.match_len_table.copy_from_slice(&tables.match_len_table);
+        self.match_len_table
+            .copy_from_slice(&tables.match_len_table);
     }
 
     #[inline(always)]
@@ -2111,7 +2107,7 @@ impl Compressor {
         for len in 3..=DEFLATE_MAX_MATCH_LEN {
             let len_info = unsafe { *LENGTH_WRITE_TABLE.get_unchecked(len) };
             let len_slot = (len_info >> 24) as usize;
-            let len_extra_bits = ((len_info >> 16) & 0xFF) as u32;
+            let len_extra_bits = (len_info >> 16) & 0xFF ;
 
             let len_cost =
                 unsafe { *self.litlen_lens.get_unchecked(257 + len_slot) } as u32 + len_extra_bits;

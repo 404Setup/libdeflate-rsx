@@ -148,24 +148,22 @@ pub unsafe fn crc32_x86_pclmulqdq(mut crc: u32, p: &[u8]) -> u32 {
         let x0_new = fold_vec128(x0, x2, mults_256b);
         let x1_new = fold_vec128(x1, x3, mults_256b);
         x0 = fold_vec128(x0_new, x1_new, mults_128b);
+    } else if len >= 48 {
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
+        let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
+        x0 = _mm_xor_si128(x0, v0);
+
+        let t1 = fold_vec128(x0, v2, mults_256b);
+        x0 = fold_vec128(v1, t1, mults_128b);
+
+        data = &data[48..];
+        len -= 48;
     } else {
-        if len >= 48 {
-            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-            let v1 = _mm_loadu_si128(data.as_ptr().add(16) as *const __m128i);
-            let v2 = _mm_loadu_si128(data.as_ptr().add(32) as *const __m128i);
-            x0 = _mm_xor_si128(x0, v0);
-
-            let t1 = fold_vec128(x0, v2, mults_256b);
-            x0 = fold_vec128(v1, t1, mults_128b);
-
-            data = &data[48..];
-            len -= 48;
-        } else {
-            let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
-            x0 = _mm_xor_si128(x0, v0);
-            data = &data[16..];
-            len -= 16;
-        }
+        let v0 = _mm_loadu_si128(data.as_ptr() as *const __m128i);
+        x0 = _mm_xor_si128(x0, v0);
+        data = &data[16..];
+        len -= 16;
     }
 
     if len >= 32 {

@@ -2266,9 +2266,9 @@ pub unsafe fn decompress_bmi2_ptr(
                                                 41 => decompress_offset_cycle3::<7>(
                                                     out_next, src, v, length,
                                                 ),
-                                                42 => decompress_offset_42(
-                                                    out_next, src, v, length,
-                                                ),
+                                                42 => {
+                                                    decompress_offset_42(out_next, src, v, length)
+                                                }
                                                 43 => decompress_offset_cycle3::<5>(
                                                     out_next, src, v, length,
                                                 ),

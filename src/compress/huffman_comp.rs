@@ -42,7 +42,7 @@ fn build_tree(a: &mut [u32], sym_count: usize) {
     let mut e = 0;
     while e < last_idx {
         let new_freq;
-        if i + 1 <= last_idx && (b == e || (a[i + 1] & FREQ_MASK) <= (a[b] & FREQ_MASK)) {
+        if i < last_idx && (b == e || (a[i + 1] & FREQ_MASK) <= (a[b] & FREQ_MASK)) {
             new_freq = (a[i] & FREQ_MASK) + (a[i + 1] & FREQ_MASK);
             i += 2;
         } else if b + 2 <= e && (i > last_idx || (a[b + 1] & FREQ_MASK) < (a[i] & FREQ_MASK)) {

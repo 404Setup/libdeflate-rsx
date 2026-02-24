@@ -57,22 +57,22 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         let t4 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx4) };
         let t5 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx5) };
         let t6 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx6) };
-        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx7) };
+        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx7) };
 
         let t12 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx12) };
         let t13 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx13) };
         let t14 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx14) };
-        let t15 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx15) };
+        let t15 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx15) };
 
         let t20 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx20) };
         let t21 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx21) };
         let t22 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx22) };
-        let t23 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx23) };
+        let t23 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx23) };
 
         let t28 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx28) };
         let t29 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx29) };
         let t30 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx30) };
-        let t31 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx31) };
+        let t31 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx31) };
 
         // Dependent chain
         // Chunk A
@@ -156,13 +156,13 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         let t4 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx4) };
         let t5 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx5) };
         let t6 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx6) };
-        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx7) };
+        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx7) };
 
         // Start independent lookups for the second chunk early
         let t12 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx12) };
         let t13 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx13) };
         let t14 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx14) };
-        let t15 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx15) };
+        let t15 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx15) };
 
         crc = ((t0 ^ t1) ^ (t2 ^ t3)) ^ ((t4 ^ t5) ^ (t6 ^ t7));
 
@@ -205,7 +205,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
         let t4 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x300 + idx4) };
         let t5 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx5) };
         let t6 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx6) };
-        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx7) };
+        let t7 = unsafe { *CRC32_SLICE8_TABLE.get_unchecked(idx7) };
 
         // Optimization: Use tree-based XOR reduction to break dependency chains and increase ILP.
         crc = ((t0 ^ t1) ^ (t2 ^ t3)) ^ ((t4 ^ t5) ^ (t6 ^ t7));
@@ -222,7 +222,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
             *CRC32_SLICE8_TABLE.get_unchecked(0x300 + (crc as u8) as usize)
                 ^ *CRC32_SLICE8_TABLE.get_unchecked(0x200 + ((crc >> 8) as u8) as usize)
                 ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + ((crc >> 16) as u8) as usize)
-                ^ *CRC32_SLICE8_TABLE.get_unchecked(0x000 + ((crc >> 24) as u8) as usize)
+                ^ *CRC32_SLICE8_TABLE.get_unchecked(((crc >> 24) as u8) as usize )
         };
         unsafe {
             ptr = ptr.add(4);
@@ -245,7 +245,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
                     (crc >> 24)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx0 as usize)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx1 as usize)
-                        ^ *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx2 as usize)
+                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx2 as usize )
                 };
             }
             2 => {
@@ -259,7 +259,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
                 crc = unsafe {
                     (crc >> 16)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx0 as usize)
-                        ^ *CRC32_SLICE8_TABLE.get_unchecked(0x000 + idx1 as usize)
+                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx1 as usize )
                 };
             }
             1 => {

@@ -441,16 +441,14 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
                 let mask = _mm256_movemask_epi8(cmp) as u32;
                 return len + 32 + (!mask).trailing_zeros() as usize;
             }
+        } else if _mm256_testz_si256(xor3, xor3) == 0 {
+            let cmp = _mm256_cmpeq_epi8(xor3, v_zero);
+            let mask = _mm256_movemask_epi8(cmp) as u32;
+            return len + 64 + (!mask).trailing_zeros() as usize;
         } else {
-            if _mm256_testz_si256(xor3, xor3) == 0 {
-                let cmp = _mm256_cmpeq_epi8(xor3, v_zero);
-                let mask = _mm256_movemask_epi8(cmp) as u32;
-                return len + 64 + (!mask).trailing_zeros() as usize;
-            } else {
-                let cmp = _mm256_cmpeq_epi8(xor4, v_zero);
-                let mask = _mm256_movemask_epi8(cmp) as u32;
-                return len + 96 + (!mask).trailing_zeros() as usize;
-            }
+            let cmp = _mm256_cmpeq_epi8(xor4, v_zero);
+            let mask = _mm256_movemask_epi8(cmp) as u32;
+            return len + 96 + (!mask).trailing_zeros() as usize;
         }
     }
 
@@ -691,7 +689,7 @@ impl MatchFinder {
     where
         F: FnMut(usize, usize),
     {
-        if pos.checked_add(3).map_or(true, |end| end > data.len()) {
+        if pos.checked_add(3).is_none_or(|end| end > data.len()) {
             return (0, 0);
         }
 
@@ -705,7 +703,7 @@ impl MatchFinder {
             src_val_4 = (src as *const u32).read_unaligned();
             src_val = src_val_4 & 0xFFFFFF;
         } else {
-            src_val = ((src.read() as u32) << 0)
+            src_val = (src.read() as u32)
                 | ((src.add(1).read() as u32) << 8)
                 | ((src.add(2).read() as u32) << 16);
         }
@@ -756,11 +754,10 @@ impl MatchFinder {
             }
 
             let mut match_ok = true;
-            if best_len >= 3 {
-                if *match_ptr.add(best_len) != *src.add(best_len) {
+            if best_len >= 3
+                && *match_ptr.add(best_len) != *src.add(best_len) {
                     match_ok = false;
                 }
-            }
 
             if match_ok {
                 if safe_to_read_u32 {
@@ -787,7 +784,7 @@ impl MatchFinder {
                     if p_rel + 4 <= data.len() {
                         match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
                     } else {
-                        match_val = ((match_ptr.read() as u32) << 0)
+                        match_val = (match_ptr.read() as u32)
                             | ((match_ptr.add(1).read() as u32) << 8)
                             | ((match_ptr.add(2).read() as u32) << 16);
                     }
@@ -949,7 +946,7 @@ impl MatchFinder {
         }
     }
     pub fn skip_match(&mut self, data: &[u8], pos: usize) {
-        if pos.checked_add(3).map_or(true, |end| end > data.len()) {
+        if pos.checked_add(3).is_none_or(|end| end > data.len()) {
             return;
         }
         unsafe {
@@ -958,7 +955,7 @@ impl MatchFinder {
             if pos + 4 <= data.len() {
                 src_val = (src as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
-                src_val = ((src.read() as u32) << 0)
+                src_val = (src.read() as u32)
                     | ((src.add(1).read() as u32) << 8)
                     | ((src.add(2).read() as u32) << 16);
             }
@@ -993,7 +990,7 @@ impl MatchFinder {
         }
         if pos
             .checked_add(count + 3)
-            .map_or(true, |end| end > data.len())
+            .is_none_or(|end| end > data.len())
         {
             for i in 0..count {
                 self.skip_match(data, pos + i);
@@ -1068,7 +1065,7 @@ impl HtMatchFinder {
     }
 
     pub fn find_match(&mut self, data: &[u8], pos: usize) -> (usize, usize) {
-        if pos.checked_add(3).map_or(true, |end| end > data.len()) {
+        if pos.checked_add(3).is_none_or(|end| end > data.len()) {
             return (0, 0);
         }
 
@@ -1081,7 +1078,7 @@ impl HtMatchFinder {
             if safe_to_read_u32 {
                 src_val = (src as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
-                src_val = ((src.read() as u32) << 0)
+                src_val = (src.read() as u32)
                     | ((src.add(1).read() as u32) << 8)
                     | ((src.add(2).read() as u32) << 16);
             }
@@ -1112,7 +1109,7 @@ impl HtMatchFinder {
             } else if p_rel + 4 <= data.len() {
                 match_val = (match_ptr as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
-                match_val = ((match_ptr.read() as u32) << 0)
+                match_val = (match_ptr.read() as u32)
                     | ((match_ptr.add(1).read() as u32) << 8)
                     | ((match_ptr.add(2).read() as u32) << 16);
             }
@@ -1139,7 +1136,7 @@ impl HtMatchFinder {
     }
 
     pub fn skip_match(&mut self, data: &[u8], pos: usize) {
-        if pos.checked_add(3).map_or(true, |end| end > data.len()) {
+        if pos.checked_add(3).is_none_or(|end| end > data.len()) {
             return;
         }
         unsafe {
@@ -1148,7 +1145,7 @@ impl HtMatchFinder {
             if pos + 4 <= data.len() {
                 src_val = (src as *const u32).read_unaligned() & 0xFFFFFF;
             } else {
-                src_val = ((src.read() as u32) << 0)
+                src_val = (src.read() as u32)
                     | ((src.add(1).read() as u32) << 8)
                     | ((src.add(2).read() as u32) << 16);
             }
@@ -1281,7 +1278,7 @@ impl BtMatchFinder {
         max_depth: usize,
         mut visitor: V,
     ) -> V {
-        if pos.checked_add(4).map_or(true, |end| end > data.len()) {
+        if pos.checked_add(4).is_none_or(|end| end > data.len()) {
             return visitor;
         }
 

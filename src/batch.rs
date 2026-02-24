@@ -60,6 +60,12 @@ impl BatchCompressor {
 
 pub struct BatchDecompressor;
 
+impl Default for BatchDecompressor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BatchDecompressor {
     pub fn new() -> Self {
         Self

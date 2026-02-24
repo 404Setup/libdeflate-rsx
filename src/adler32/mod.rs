@@ -46,7 +46,7 @@ fn adler32_chunk(s1: &mut u32, s2: &mut u32, p: &[u8]) {
             + (b12 * 4)
             + (b13 * 3)
             + (b14 * 2)
-            + (b15 * 1);
+            + b15;
 
         s1_local +=
             b0 + b1 + b2 + b3 + b4 + b5 + b6 + b7 + b8 + b9 + b10 + b11 + b12 + b13 + b14 + b15;
@@ -63,7 +63,7 @@ fn adler32_chunk(s1: &mut u32, s2: &mut u32, p: &[u8]) {
         let b2 = unsafe { *ptr.add(2) as u32 };
         let b3 = unsafe { *ptr.add(3) as u32 };
 
-        s2_local += (s1_local << 2) + (b0 * 4) + (b1 * 3) + (b2 * 2) + (b3 * 1);
+        s2_local += (s1_local << 2) + (b0 * 4) + (b1 * 3) + (b2 * 2) + b3;
         s1_local += b0 + b1 + b2 + b3;
 
         unsafe {
