@@ -199,3 +199,87 @@ fn test_gzip_zlib_limits() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
 }
+
+#[test]
+fn test_limit_boundary() {
+    let mut decompressor = Decompressor::new();
+    decompressor.set_max_memory_limit(100);
+
+    // Limit is 100.
+    // expected_size = 100. Should pass.
+    let data = vec![0u8; 10]; // compressed data might be small
+    let expected_size = 100;
+    // We expect InvalidData because input is zeros (garbage deflate), but NOT InvalidInput (limit check).
+    let result = decompressor.decompress_deflate(&data, expected_size);
+    if let Err(e) = &result {
+        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Boundary 100 should pass limit check");
+    }
+
+    // expected_size = 101. Should fail limit check.
+    let result = decompressor.decompress_deflate(&data, 101);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+}
+
+#[test]
+fn test_zero_limits() {
+    let mut decompressor = Decompressor::new();
+
+    // Zero memory limit
+    decompressor.set_max_memory_limit(0);
+    let data = vec![0u8; 10];
+
+    // expected_size = 1. Should fail.
+    let result = decompressor.decompress_deflate(&data, 1);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+
+    // expected_size = 0. Should pass limit check.
+    let result = decompressor.decompress_deflate(&data, 0);
+    if let Err(e) = &result {
+        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Size 0 should pass limit check");
+    }
+
+    // Reset memory limit
+    decompressor.set_max_memory_limit(usize::MAX);
+
+    // Zero ratio limit
+    decompressor.set_limit_ratio(0);
+    // Limit = 10 * 0 + 4096 = 4096.
+
+    // expected_size = 4096. Should pass.
+    let result = decompressor.decompress_deflate(&data, 4096);
+    if let Err(e) = &result {
+        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Size 4096 should pass zero ratio limit check");
+    }
+
+    // expected_size = 4097. Should fail.
+    let result = decompressor.decompress_deflate(&data, 4097);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+}
+
+#[test]
+fn test_decompress_into_ignores_limits() {
+    let mut decompressor = Decompressor::new();
+    // Set very strict limits
+    decompressor.set_max_memory_limit(10);
+    decompressor.set_limit_ratio(1);
+
+    // Create valid compressed data
+    let mut compressor = Compressor::new(1).unwrap();
+    let original = b"Hello world".repeat(10); // length 110
+    let compressed = compressor.compress_deflate(&original).unwrap();
+
+    // Verify normal decompression fails due to limits
+    let res = decompressor.decompress_deflate(&compressed, original.len());
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+
+    // Verify decompress_into succeeds because user provides buffer
+    let mut output = vec![0u8; original.len()];
+    let res = decompressor.decompress_deflate_into(&compressed, &mut output);
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap(), original.len());
+    assert_eq!(output, original);
+}
