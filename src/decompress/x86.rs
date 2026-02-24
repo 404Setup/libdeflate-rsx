@@ -627,6 +627,29 @@ unsafe fn decompress_offset_5(out_next: *mut u8, src: *const u8, length: usize) 
     let v_pat = _mm_shuffle_epi8(v_raw, mask);
 
     let mut copied = 0;
+
+    // Optimization: Precompute rotated vectors to write 80 bytes using 5 stores (stride 16).
+    if length >= 80 {
+        let mask1 = _mm_setr_epi8(1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1);
+        let mask2 = _mm_setr_epi8(2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2);
+        let mask3 = _mm_setr_epi8(3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3);
+        let mask4 = _mm_setr_epi8(4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4);
+
+        let v_pat1 = _mm_shuffle_epi8(v_raw, mask1);
+        let v_pat2 = _mm_shuffle_epi8(v_raw, mask2);
+        let v_pat3 = _mm_shuffle_epi8(v_raw, mask3);
+        let v_pat4 = _mm_shuffle_epi8(v_raw, mask4);
+
+        while copied + 80 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
+            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
+            _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v_pat3);
+            _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v_pat4);
+            copied += 80;
+        }
+    }
+
     while copied + 64 <= length {
         _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
         _mm_storeu_si128(out_next.add(copied + 5) as *mut __m128i, v_pat);
