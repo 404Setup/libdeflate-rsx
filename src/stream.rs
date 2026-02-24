@@ -67,7 +67,11 @@ impl<W: Write + Send> DeflateEncoder<W> {
                     output
                         .try_reserve(bound - output.len())
                         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-                    output.resize(bound, 0);
+                    // SAFETY: We just reserved sufficient capacity. The compressor writes to
+                    // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
+                    unsafe {
+                        output.set_len(bound);
+                    }
                 }
 
                 let mode = if final_block {
@@ -101,7 +105,11 @@ impl<W: Write + Send> DeflateEncoder<W> {
                             output
                                 .try_reserve(bound - output.len())
                                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-                            output.resize(bound, 0);
+                            // SAFETY: We just reserved sufficient capacity. The compressor writes to
+                            // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
+                            unsafe {
+                                output.set_len(bound);
+                            }
                         }
 
                         let mode = if final_block && i == num_chunks - 1 {
@@ -146,7 +154,11 @@ impl<W: Write + Send> DeflateEncoder<W> {
                 output
                     .try_reserve(bound - output.len())
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-                output.resize(bound, 0);
+                // SAFETY: We just reserved sufficient capacity. The compressor writes to
+                // the buffer using `MaybeUninit` pointers, so uninitialized memory is fine.
+                unsafe {
+                    output.set_len(bound);
+                }
             }
 
             let mode = if final_block {
