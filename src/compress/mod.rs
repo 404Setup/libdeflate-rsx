@@ -256,15 +256,27 @@ impl BlockSplitStats {
 
     #[inline(always)]
     fn should_end_block(&mut self, block_length: usize, input_remaining: usize) -> bool {
+        // Optimization: Fast path for the common case where we are far from any block limit.
+        // This avoids checking `input_remaining` (which requires a subtraction) and other
+        // conditions in the hottest path (executed for every literal/match).
+        if self.num_new_observations < NUM_OBSERVATIONS_PER_BLOCK_CHECK
+            && block_length < SOFT_MAX_BLOCK_LENGTH
+        {
+            return false;
+        }
+
         if input_remaining <= MIN_BLOCK_LENGTH {
             return false;
         }
         if block_length >= SOFT_MAX_BLOCK_LENGTH {
             return true;
         }
-        if self.num_new_observations >= NUM_OBSERVATIONS_PER_BLOCK_CHECK
-            && block_length >= MIN_BLOCK_LENGTH
-        {
+
+        // If we reach here, we know `block_length < SOFT_MAX_BLOCK_LENGTH`.
+        // Combined with the failure of the fast path check above, this implies that
+        // `self.num_new_observations >= NUM_OBSERVATIONS_PER_BLOCK_CHECK`.
+        // So we can proceed directly to the block split check without re-verifying the count.
+        if block_length >= MIN_BLOCK_LENGTH {
             if self.do_end_block_check(block_length) {
                 return true;
             }
