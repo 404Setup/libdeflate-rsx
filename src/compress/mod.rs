@@ -61,15 +61,16 @@ const OFFSET_EXTRA_BITS_TABLE: [u8; 30] = [
     13,
 ];
 
-// Precomputed table for get_offset_slot to avoid bitwise operations in the hot loop.
-// This significantly speeds up Level 10+ optimal parsing where this function is called frequently.
-// The table covers the standard DEFLATE window size (32KB).
-// Logic matches the runtime calculation:
-// slot = if offset <= 2 { offset - 1 } else { 2 * bsr(offset-1) + ((offset-1) >> bsr(offset-1)) & 1 }
-const OFFSET_SLOT_TABLE: [u8; 32769] = {
-    let mut table = [0; 32769];
+// Precomputed table for get_offset_slot.
+// For offsets <= 256, table[offset] gives the slot.
+// For offsets > 256, table[256 + ((offset - 1) >> 7)] gives the slot.
+// This reduces the table size from 32KB to 512 bytes, improving cache locality.
+const OFFSET_SLOT_TABLE_512: [u8; 512] = {
+    let mut table = [0; 512];
+
+    // Fill 0..=256 (used for direct lookup)
     let mut offset: usize = 1;
-    while offset <= 32768 {
+    while offset <= 256 {
         let slot = if offset <= 2 {
             offset - 1
         } else {
@@ -80,6 +81,25 @@ const OFFSET_SLOT_TABLE: [u8; 32769] = {
         table[offset] = slot as u8;
         offset += 1;
     }
+
+    // Fill 257..511 (used for (offset - 1) >> 7)
+    // Index i corresponds to k = i - 256.
+    // k = (offset - 1) >> 7.
+    let mut k: u32 = 0;
+    while k < 256 {
+        // We only access this part for offset > 256, which implies k >= 2.
+        if k >= 2 {
+            // Pick a representative offset value. k << 7 works because the slot
+            // depends only on the MSB and the bit below it, which are preserved
+            // in k for k >= 2.
+            let off = k << 7;
+            let l = 31 - off.leading_zeros();
+            let slot = ((2 * l) + ((off >> (l - 1)) & 1)) as usize;
+            table[(256 + k) as usize] = slot as u8;
+        }
+        k += 1;
+    }
+
     table
 };
 
@@ -2002,10 +2022,15 @@ impl Compressor {
 
     #[inline(always)]
     fn get_offset_slot(&self, offset: usize) -> usize {
-        debug_assert!(offset < OFFSET_SLOT_TABLE.len());
-        // SAFETY: The match finder guarantees offset <= DEFLATE_MAX_MATCH_OFFSET (32768),
-        // which is within the table bounds (32769).
-        unsafe { *OFFSET_SLOT_TABLE.get_unchecked(offset) as usize }
+        debug_assert!(offset <= 32768);
+        if offset <= 256 {
+            // SAFETY: table has size 512, offset <= 256 is within bounds.
+            unsafe { *OFFSET_SLOT_TABLE_512.get_unchecked(offset) as usize }
+        } else {
+            // SAFETY: offset <= 32768 implies (offset - 1) >> 7 <= 255.
+            // Index <= 256 + 255 = 511. Within bounds.
+            unsafe { *OFFSET_SLOT_TABLE_512.get_unchecked(256 + ((offset - 1) >> 7)) as usize }
+        }
     }
 
     fn update_costs(&mut self) {
