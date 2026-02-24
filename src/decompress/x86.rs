@@ -963,6 +963,23 @@ decompress_offset_simple! {
         _mm_shuffle_epi8(v_raw, mask)
     },
     unrolled_loops: {
+        // Unroll loop 8x for offset 13 (8 * 13 = 104 bytes per iteration).
+        // This reduces loop overhead for long matches.
+        // Safety: The last write is at offset 91 (7 * 13).
+        // A 16-byte write at 91 requires 91 + 16 = 107 bytes.
+        // We check for 120 bytes to be safe and consistent with other offsets.
+        while copied + 120 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 13) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 26) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 39) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 52) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 65) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 78) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 91) as *mut __m128i, v_pat);
+            copied += 104;
+        }
+
         while copied + 64 <= length {
             _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
             _mm_storeu_si128(out_next.add(copied + 13) as *mut __m128i, v_pat);
