@@ -2081,6 +2081,170 @@ unsafe fn decompress_offset_64(out_next: *mut u8, src: *const u8, v: __m128i, le
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+unsafe fn copy_match_bmi2(out_next: *mut u8, src: *const u8, offset: usize, length: usize) {
+    if offset >= 16 {
+        let v = _mm_loadu_si128(src as *const __m128i);
+        _mm_storeu_si128(out_next as *mut __m128i, v);
+        if length > 16 {
+            if offset >= length {
+                std::ptr::copy_nonoverlapping(src.add(16), out_next.add(16), length - 16);
+            } else {
+                match offset {
+                    34 => decompress_offset_cycle3::<14>(out_next, src, v, length),
+                    33 => decompress_offset_cycle3::<15>(out_next, src, v, length),
+                    35 => decompress_offset_cycle3::<13>(out_next, src, v, length),
+                    37 => decompress_offset_cycle3::<11>(out_next, src, v, length),
+                    38 => decompress_offset_cycle3::<10>(out_next, src, v, length),
+                    39 => decompress_offset_cycle3::<9>(out_next, src, v, length),
+                    41 => decompress_offset_cycle3::<7>(out_next, src, v, length),
+                    42 => decompress_offset_42(out_next, src, v, length),
+                    43 => decompress_offset_cycle3::<5>(out_next, src, v, length),
+                    45 => decompress_offset_cycle3::<3>(out_next, src, v, length),
+                    46 => decompress_offset_cycle3::<2>(out_next, src, v, length),
+                    47 => decompress_offset_cycle3::<1>(out_next, src, v, length),
+                    49 => decompress_offset_cycle4::<15>(out_next, src, v, length),
+                    50 => decompress_offset_cycle4::<14>(out_next, src, v, length),
+                    51 => decompress_offset_cycle4::<13>(out_next, src, v, length),
+                    53 => decompress_offset_cycle4::<11>(out_next, src, v, length),
+                    54 => decompress_offset_cycle4::<10>(out_next, src, v, length),
+                    55 => decompress_offset_cycle4::<9>(out_next, src, v, length),
+                    57 => decompress_offset_cycle4::<7>(out_next, src, v, length),
+                    59 => decompress_offset_cycle4::<5>(out_next, src, v, length),
+                    58 => decompress_offset_58(out_next, src, v, length),
+                    61 => decompress_offset_cycle4::<3>(out_next, src, v, length),
+                    62 => decompress_offset_cycle4::<2>(out_next, src, v, length),
+                    63 => decompress_offset_cycle4::<1>(out_next, src, v, length),
+                    60 => decompress_offset_60(out_next, src, v, length),
+                    44 => decompress_offset_44(out_next, src, v, length),
+                    36 => decompress_offset_36(out_next, src, v, length),
+                    52 => decompress_offset_52(out_next, src, v, length),
+                    56 => decompress_offset_56(out_next, src, v, length),
+                    48 => decompress_offset_48(out_next, src, v, length),
+                    64 => decompress_offset_64(out_next, src, v, length),
+                    16 => {
+                        decompress_fill_pattern_16(out_next, v, src, length);
+                    }
+                    17 => decompress_offset_17(out_next, src, v, length),
+                    18 => decompress_offset_18(out_next, src, v, length),
+                    19 => {
+                        decompress_offset_alignr_cycle::<13>(out_next, src, length, v);
+                    }
+                    20 => decompress_offset_20(out_next, src, v, length),
+                    21 => {
+                        decompress_offset_alignr_cycle::<11>(out_next, src, length, v);
+                    }
+                    22 => {
+                        decompress_offset_alignr_cycle::<10>(out_next, src, length, v);
+                    }
+                    23 => {
+                        decompress_offset_alignr_cycle::<9>(out_next, src, length, v);
+                    }
+                    24 => decompress_offset_24(out_next, src, v, length),
+                    25 => {
+                        decompress_offset_alignr_cycle::<7>(out_next, src, length, v);
+                    }
+                    26 => {
+                        decompress_offset_alignr_cycle::<6>(out_next, src, length, v);
+                    }
+                    27 => {
+                        decompress_offset_alignr_cycle::<5>(out_next, src, length, v);
+                    }
+                    28 => decompress_offset_28(out_next, src, v, length),
+                    29 => {
+                        decompress_offset_alignr_cycle::<3>(out_next, src, length, v);
+                    }
+                    30 => decompress_offset_30(out_next, src, v, length),
+                    31 => {
+                        decompress_offset_alignr_cycle::<1>(out_next, src, length, v);
+                    }
+                    32 => decompress_offset_32(out_next, src, v, length),
+                    40 => decompress_offset_40(out_next, src, v, length),
+                    _ => {
+                        let init = std::cmp::min(offset, length);
+                        std::ptr::copy_nonoverlapping(src, out_next, init);
+
+                        let mut copied = init;
+                        while copied < length {
+                            let to_copy = std::cmp::min(length - copied, copied);
+                            std::ptr::copy_nonoverlapping(out_next, out_next.add(copied), to_copy);
+                            copied += to_copy;
+                        }
+                    }
+                }
+            }
+        }
+    } else if offset >= length {
+        std::ptr::copy_nonoverlapping(src, out_next, length);
+    } else {
+        match offset {
+            1 => {
+                let b = *src;
+                std::ptr::write_bytes(out_next, b, length);
+            }
+            2 | 4 => {
+                let v_pattern = match offset {
+                    2 => _mm_set1_epi16(std::ptr::read_unaligned(src as *const u16) as i16),
+                    4 => _mm_set1_epi32(std::ptr::read_unaligned(src as *const u32) as i32),
+                    _ => std::hint::unreachable_unchecked(),
+                };
+                decompress_fill_pattern(out_next, v_pattern, length);
+            }
+            3 => {
+                decompress_offset_3(out_next, src, length);
+            }
+            5 => {
+                decompress_offset_5(out_next, src, length);
+            }
+            6 => {
+                decompress_offset_6(out_next, src, length);
+            }
+            7 => {
+                decompress_offset_7(out_next, src, length);
+            }
+            8 => {
+                let val = std::ptr::read_unaligned(src as *const u64);
+                let v_pattern = _mm_set1_epi64x(val as i64);
+                decompress_fill_pattern(out_next, v_pattern, length);
+            }
+            9 => {
+                decompress_offset_9(out_next, src, length);
+            }
+            10 => {
+                decompress_offset_10(out_next, src, length);
+            }
+            11 => {
+                decompress_offset_11(out_next, src, length);
+            }
+            12 => {
+                decompress_offset_12(out_next, src, length);
+            }
+            13 => {
+                decompress_offset_13(out_next, src, length);
+            }
+            14 => {
+                decompress_offset_14(out_next, src, length);
+            }
+            15 => {
+                decompress_offset_15(out_next, src, length);
+            }
+            _ => {
+                let mut copied = 0;
+                while copied + 8 <= length {
+                    let val = std::ptr::read_unaligned(src.add(copied) as *const u64);
+                    std::ptr::write_unaligned(out_next.add(copied) as *mut u64, val);
+                    copied += 8;
+                }
+                while copied < length {
+                    *out_next.add(copied) = *src.add(copied);
+                    copied += 1;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2,ssse3,sse4.1")]
 pub unsafe fn decompress_bmi2_ptr(
     d: &mut Decompressor,
     input: &[u8],
@@ -2272,285 +2436,7 @@ pub unsafe fn decompress_bmi2_ptr(
                                 }
 
                                 let src = out_next.sub(offset);
-                                if offset >= 16 {
-                                    let v = _mm_loadu_si128(src as *const __m128i);
-                                    _mm_storeu_si128(out_next as *mut __m128i, v);
-                                    if length > 16 {
-                                        if offset >= length {
-                                            std::ptr::copy_nonoverlapping(
-                                                src.add(16),
-                                                out_next.add(16),
-                                                length - 16,
-                                            );
-                                        } else {
-                                            match offset {
-                                                34 => decompress_offset_cycle3::<14>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                33 => decompress_offset_cycle3::<15>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                35 => decompress_offset_cycle3::<13>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                37 => decompress_offset_cycle3::<11>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                38 => decompress_offset_cycle3::<10>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                39 => decompress_offset_cycle3::<9>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                41 => decompress_offset_cycle3::<7>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                42 => {
-                                                    decompress_offset_42(out_next, src, v, length)
-                                                }
-                                                43 => decompress_offset_cycle3::<5>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                45 => decompress_offset_cycle3::<3>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                46 => decompress_offset_cycle3::<2>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                47 => decompress_offset_cycle3::<1>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                49 => decompress_offset_cycle4::<15>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                50 => decompress_offset_cycle4::<14>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                51 => decompress_offset_cycle4::<13>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                53 => decompress_offset_cycle4::<11>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                54 => decompress_offset_cycle4::<10>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                55 => decompress_offset_cycle4::<9>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                57 => decompress_offset_cycle4::<7>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                59 => decompress_offset_cycle4::<5>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                58 => {
-                                                    decompress_offset_58(out_next, src, v, length)
-                                                }
-                                                61 => decompress_offset_cycle4::<3>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                62 => decompress_offset_cycle4::<2>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                63 => decompress_offset_cycle4::<1>(
-                                                    out_next, src, v, length,
-                                                ),
-                                                60 => {
-                                                    decompress_offset_60(out_next, src, v, length)
-                                                }
-                                                44 => {
-                                                    decompress_offset_44(out_next, src, v, length)
-                                                }
-                                                36 => {
-                                                    decompress_offset_36(out_next, src, v, length)
-                                                }
-                                                52 => {
-                                                    decompress_offset_52(out_next, src, v, length)
-                                                }
-                                                56 => {
-                                                    decompress_offset_56(out_next, src, v, length)
-                                                }
-                                                48 => {
-                                                    decompress_offset_48(out_next, src, v, length)
-                                                }
-                                                64 => {
-                                                    decompress_offset_64(out_next, src, v, length)
-                                                }
-                                                16 => {
-                                                    decompress_fill_pattern_16(
-                                                        out_next, v, src, length,
-                                                    );
-                                                }
-                                                17 => {
-                                                    decompress_offset_17(out_next, src, v, length)
-                                                }
-                                                18 => {
-                                                    decompress_offset_18(out_next, src, v, length)
-                                                }
-                                                19 => {
-                                                    decompress_offset_alignr_cycle::<13>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                20 => {
-                                                    decompress_offset_20(out_next, src, v, length)
-                                                }
-                                                21 => {
-                                                    decompress_offset_alignr_cycle::<11>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                22 => {
-                                                    decompress_offset_alignr_cycle::<10>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                23 => {
-                                                    decompress_offset_alignr_cycle::<9>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                24 => {
-                                                    decompress_offset_24(out_next, src, v, length)
-                                                }
-                                                25 => {
-                                                    decompress_offset_alignr_cycle::<7>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                26 => {
-                                                    decompress_offset_alignr_cycle::<6>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                27 => {
-                                                    decompress_offset_alignr_cycle::<5>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                28 => {
-                                                    decompress_offset_28(out_next, src, v, length)
-                                                }
-                                                29 => {
-                                                    decompress_offset_alignr_cycle::<3>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                30 => {
-                                                    decompress_offset_30(out_next, src, v, length)
-                                                }
-                                                31 => {
-                                                    decompress_offset_alignr_cycle::<1>(
-                                                        out_next, src, length, v,
-                                                    );
-                                                }
-                                                32 => {
-                                                    decompress_offset_32(out_next, src, v, length)
-                                                }
-                                                40 => {
-                                                    decompress_offset_40(out_next, src, v, length)
-                                                }
-                                                _ => {
-                                                    let init = std::cmp::min(offset, length);
-                                                    std::ptr::copy_nonoverlapping(
-                                                        src, out_next, init,
-                                                    );
-
-                                                    let mut copied = init;
-                                                    while copied < length {
-                                                        let to_copy =
-                                                            std::cmp::min(length - copied, copied);
-                                                        std::ptr::copy_nonoverlapping(
-                                                            out_next,
-                                                            out_next.add(copied),
-                                                            to_copy,
-                                                        );
-                                                        copied += to_copy;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else if offset >= length {
-                                    std::ptr::copy_nonoverlapping(src, out_next, length);
-                                } else {
-                                    match offset {
-                                        1 => {
-                                            let b = *src;
-                                            std::ptr::write_bytes(out_next, b, length);
-                                        }
-                                        2 | 4 => {
-                                            let v_pattern = match offset {
-                                                2 => _mm_set1_epi16(std::ptr::read_unaligned(
-                                                    src as *const u16,
-                                                )
-                                                    as i16),
-                                                4 => _mm_set1_epi32(std::ptr::read_unaligned(
-                                                    src as *const u32,
-                                                )
-                                                    as i32),
-                                                _ => std::hint::unreachable_unchecked(),
-                                            };
-                                            decompress_fill_pattern(out_next, v_pattern, length);
-                                        }
-                                        3 => {
-                                            decompress_offset_3(out_next, src, length);
-                                        }
-                                        5 => {
-                                            decompress_offset_5(out_next, src, length);
-                                        }
-                                        6 => {
-                                            decompress_offset_6(out_next, src, length);
-                                        }
-                                        7 => {
-                                            decompress_offset_7(out_next, src, length);
-                                        }
-                                        8 => {
-                                            let val = std::ptr::read_unaligned(src as *const u64);
-                                            let v_pattern = _mm_set1_epi64x(val as i64);
-                                            decompress_fill_pattern(out_next, v_pattern, length);
-                                        }
-                                        9 => {
-                                            decompress_offset_9(out_next, src, length);
-                                        }
-                                        10 => {
-                                            decompress_offset_10(out_next, src, length);
-                                        }
-                                        11 => {
-                                            decompress_offset_11(out_next, src, length);
-                                        }
-                                        12 => {
-                                            decompress_offset_12(out_next, src, length);
-                                        }
-                                        13 => {
-                                            decompress_offset_13(out_next, src, length);
-                                        }
-                                        14 => {
-                                            decompress_offset_14(out_next, src, length);
-                                        }
-                                        15 => {
-                                            decompress_offset_15(out_next, src, length);
-                                        }
-                                        _ => {
-                                            let mut copied = 0;
-                                            while copied + 8 <= length {
-                                                let val = std::ptr::read_unaligned(
-                                                    src.add(copied) as *const u64
-                                                );
-                                                std::ptr::write_unaligned(
-                                                    out_next.add(copied) as *mut u64,
-                                                    val,
-                                                );
-                                                copied += 8;
-                                            }
-                                            while copied < length {
-                                                *out_next.add(copied) = *src.add(copied);
-                                                copied += 1;
-                                            }
-                                        }
-                                    }
-                                }
+                                copy_match_bmi2(out_next, src, offset, length);
                                 out_next = out_next.add(length);
                             }
                         }
