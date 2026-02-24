@@ -1882,14 +1882,9 @@ impl Compressor {
             }
             for i in 0..lens.len() {
                 if lens[i] > 0 {
-                    let mut c = next_code[lens[i] as usize];
+                    let c = next_code[lens[i] as usize];
                     next_code[lens[i] as usize] += 1;
-                    let mut rev = 0u32;
-                    for _ in 0..lens[i] {
-                        rev = (rev << 1) | (c & 1);
-                        c >>= 1;
-                    }
-                    codewords[i] = rev;
+                    codewords[i] = (c as u16).reverse_bits() as u32 >> (16 - lens[i]);
                 }
             }
         }
