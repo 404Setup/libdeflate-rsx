@@ -35,6 +35,101 @@ macro_rules! refill_bits {
     };
 }
 
+macro_rules! decompress_offset_rotated {
+    (
+        fn_name: $fn_name:ident,
+        offset: $offset:expr,
+        min_len: $min_len:expr,
+        stride: $stride:expr,
+        mask: $mask:expr,
+        rotated_vecs: [$(($v_name:ident, $v_mask:expr)),+],
+        vars: {
+            out_next: $out_next:ident,
+            src: $src:ident,
+            length: $length:ident,
+            v_raw: $v_raw:ident,
+            v_pat: $v_pat:ident,
+            copied: $copied:ident
+        },
+        unrolled_stores: $unrolled_stores:block,
+        intermediate: $intermediate:block
+    ) => {
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+        unsafe fn $fn_name($out_next: *mut u8, $src: *const u8, $length: usize) {
+            let $v_raw = _mm_loadu_si128($src as *const __m128i);
+            let mask = $mask;
+            let $v_pat = _mm_shuffle_epi8($v_raw, mask);
+
+            let mut $copied = 0;
+
+            if $length >= $min_len {
+                $(
+                    let mask = $v_mask;
+                    let $v_name = _mm_shuffle_epi8($v_raw, mask);
+                )*
+
+                while $copied + $stride <= $length {
+                    $unrolled_stores
+                    $copied += $stride;
+                }
+            }
+
+            $intermediate
+
+            while $copied + 16 <= $length {
+                _mm_storeu_si128($out_next.add($copied) as *mut __m128i, $v_pat);
+                $copied += $offset;
+            }
+
+            if $copied < $length {
+                let mut tmp = [0u8; 16];
+                _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, $v_pat);
+                std::ptr::copy_nonoverlapping(tmp.as_ptr(), $out_next.add($copied), $length - $copied);
+            }
+        }
+    }
+}
+
+macro_rules! decompress_offset_simple {
+    (
+        fn_name: $fn_name:ident,
+        offset: $offset:expr,
+        vars: {
+            out_next: $out_next:ident,
+            src: $src:ident,
+            length: $length:ident,
+            v_raw: $v_raw:ident,
+            v_pat: $v_pat:ident,
+            copied: $copied:ident
+        },
+        setup: $setup:expr,
+        unrolled_loops: $unrolled_loops:block
+    ) => {
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "bmi2,ssse3,sse4.1")]
+        unsafe fn $fn_name($out_next: *mut u8, $src: *const u8, $length: usize) {
+            let $v_raw = _mm_loadu_si128($src as *const __m128i);
+            let $v_pat = $setup;
+
+            let mut $copied = 0;
+
+            $unrolled_loops
+
+            while $copied + 16 <= $length {
+                _mm_storeu_si128($out_next.add($copied) as *mut __m128i, $v_pat);
+                $copied += $offset;
+            }
+
+            if $copied < $length {
+                let mut tmp = [0u8; 16];
+                _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, $v_pat);
+                std::ptr::copy_nonoverlapping(tmp.as_ptr(), $out_next.add($copied), $length - $copied);
+            }
+        }
+    }
+}
+
 // Optimization: Specialized implementation for offset 18.
 // By manually constructing the 9 cyclic vectors using independent `alignr` instructions
 // from `v0` and `v1`, we break the serial dependency chain present in the generic loop.
@@ -581,285 +676,241 @@ unsafe fn decompress_offset_cycle4<const SHIFT: i32>(
 }
 
 // Optimization: Specialized implementation for offset 3.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_3(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-    // By precomputing rotated vectors, we can write 48 bytes using 3 aligned stores
-    // (stride 16), instead of 8 overlapping stores (stride 3). This reduces store
-    // traffic by ~5.3x.
-    if length >= 48 {
-        let mask1 = _mm_setr_epi8(1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1);
-        let mask2 = _mm_setr_epi8(2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2);
-        let v_pat1 = _mm_shuffle_epi8(v_raw, mask1);
-        let v_pat2 = _mm_shuffle_epi8(v_raw, mask2);
-
-        while copied + 48 <= length {
-            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
-            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
-            copied += 48;
-        }
-    }
-
-    while copied + 16 <= length {
+decompress_offset_rotated! {
+    fn_name: decompress_offset_3,
+    offset: 3,
+    min_len: 48,
+    stride: 48,
+    mask: _mm_setr_epi8(0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0),
+    rotated_vecs: [
+        (v_pat1, _mm_setr_epi8(1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1)),
+        (v_pat2, _mm_setr_epi8(2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2))
+    ],
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    unrolled_stores: {
         _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 3;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
-    }
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
+    },
+    intermediate: {}
 }
 
 // Optimization: Specialized implementation for offset 5.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_5(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-
-    // Optimization: Precompute rotated vectors to write 80 bytes using 5 stores (stride 16).
-    if length >= 80 {
-        let mask1 = _mm_setr_epi8(1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1);
-        let mask2 = _mm_setr_epi8(2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2);
-        let mask3 = _mm_setr_epi8(3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3);
-        let mask4 = _mm_setr_epi8(4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4);
-
-        let v_pat1 = _mm_shuffle_epi8(v_raw, mask1);
-        let v_pat2 = _mm_shuffle_epi8(v_raw, mask2);
-        let v_pat3 = _mm_shuffle_epi8(v_raw, mask3);
-        let v_pat4 = _mm_shuffle_epi8(v_raw, mask4);
-
-        while copied + 80 <= length {
+decompress_offset_rotated! {
+    fn_name: decompress_offset_5,
+    offset: 5,
+    min_len: 80,
+    stride: 80,
+    mask: _mm_setr_epi8(0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0),
+    rotated_vecs: [
+        (v_pat1, _mm_setr_epi8(1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1)),
+        (v_pat2, _mm_setr_epi8(2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2)),
+        (v_pat3, _mm_setr_epi8(3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3)),
+        (v_pat4, _mm_setr_epi8(4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4))
+    ],
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    unrolled_stores: {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v_pat3);
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v_pat4);
+    },
+    intermediate: {
+        while copied + 64 <= length {
             _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
-            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
-            _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, v_pat3);
-            _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, v_pat4);
-            copied += 80;
+            _mm_storeu_si128(out_next.add(copied + 5) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
+            copied += 20;
         }
-    }
-
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 5) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
-        copied += 20;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 5;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
     }
 }
 
 // Optimization: Specialized implementation for offset 6.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_6(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-
-    // Optimization: Precompute rotated vectors to write 48 bytes using 3 stores (stride 16).
-    // LCM(6, 16) = 48.
-    // This reduces the store traffic by ~2.6x compared to 1 store per 6 bytes.
-    if length >= 48 {
-        let mask1 = _mm_setr_epi8(4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1);
-        let mask2 = _mm_setr_epi8(2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5);
-        let v_pat1 = _mm_shuffle_epi8(v_raw, mask1);
-        let v_pat2 = _mm_shuffle_epi8(v_raw, mask2);
-
-        while copied + 48 <= length {
+decompress_offset_rotated! {
+    fn_name: decompress_offset_6,
+    offset: 6,
+    min_len: 48,
+    stride: 48,
+    mask: _mm_setr_epi8(0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3),
+    rotated_vecs: [
+        (v_pat1, _mm_setr_epi8(4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1)),
+        (v_pat2, _mm_setr_epi8(2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5))
+    ],
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    unrolled_stores: {
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
+    },
+    intermediate: {
+        while copied + 64 <= length {
             _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-            _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v_pat1);
-            _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, v_pat2);
-            copied += 48;
+            _mm_storeu_si128(out_next.add(copied + 6) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 12) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
+            copied += 24;
         }
-    }
-
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 6) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 12) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
-        copied += 24;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 6;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
     }
 }
 
 // Optimization: Specialized implementation for offset 7.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_7(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 7) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 14) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 21) as *mut __m128i, v_pat);
-        copied += 28;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 7;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_7,
+    offset: 7,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1);
+        _mm_shuffle_epi8(v_raw, mask)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 7) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 14) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 21) as *mut __m128i, v_pat);
+            copied += 28;
+        }
     }
 }
 
 // Optimization: Specialized implementation for offset 9.
 // The pattern has length 9. We construct a 16-byte vector [P0...P8, P0...P6]
 // using a single shuffle instruction.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_9(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
+decompress_offset_simple! {
+    fn_name: decompress_offset_9,
+    offset: 9,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6);
+        _mm_shuffle_epi8(v_raw, mask)
+    },
+    unrolled_loops: {
+        while copied + 80 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 27) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 36) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 54) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 63) as *mut __m128i, v_pat);
+            copied += 72;
+        }
 
-    let mut copied = 0;
-    while copied + 80 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 27) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 36) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 54) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 63) as *mut __m128i, v_pat);
-        copied += 72;
-    }
-
-    while copied + 48 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 27) as *mut __m128i, v_pat);
-        copied += 36;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 9;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
+        while copied + 48 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 9) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 18) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 27) as *mut __m128i, v_pat);
+            copied += 36;
+        }
     }
 }
 
 // Optimization: Specialized implementation for offset 10.
 // The pattern has length 10. We construct a 16-byte vector [P0...P9, P0...P5]
 // using a single shuffle instruction.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_10(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
+decompress_offset_simple! {
+    fn_name: decompress_offset_10,
+    offset: 10,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5);
+        _mm_shuffle_epi8(v_raw, mask)
+    },
+    unrolled_loops: {
+        while copied + 104 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 20) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 40) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 50) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 60) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 70) as *mut __m128i, v_pat);
+            copied += 80;
+        }
 
-    let mut copied = 0;
-    while copied + 104 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 20) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 40) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 50) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 60) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 70) as *mut __m128i, v_pat);
-        copied += 80;
-    }
-
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 20) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
-        copied += 40;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 10;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 10) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 20) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
+            copied += 40;
+        }
     }
 }
 
 // Optimization: Specialized implementation for offset 11.
 // The pattern has length 11. We construct a 16-byte vector [P0...P10, P0...P4]
 // using a single shuffle instruction.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_11(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 1, 2, 3, 4);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 11) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 22) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 33) as *mut __m128i, v_pat);
-        copied += 44;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 11;
-    }
-
-    if copied < length {
-        let mut tmp = [0u8; 16];
-        _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, v_pat);
-        std::ptr::copy_nonoverlapping(tmp.as_ptr(), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_11,
+    offset: 11,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 1, 2, 3, 4);
+        _mm_shuffle_epi8(v_raw, mask)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 11) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 22) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 33) as *mut __m128i, v_pat);
+            copied += 44;
+        }
     }
 }
 
@@ -867,87 +918,87 @@ unsafe fn decompress_offset_11(out_next: *mut u8, src: *const u8, length: usize)
 // The pattern has length 12. We construct a 16-byte vector [P0...P11, P0...P3]
 // using a single insert instruction. This vector allows us to write 16 bytes
 // at a time with a stride of 12 bytes.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_12(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let p0 = _mm_cvtsi128_si32(v_raw);
-    let v_pat = _mm_insert_epi32::<3>(v_raw, p0);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 12) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 24) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 36) as *mut __m128i, v_pat);
-        copied += 48;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 12;
-    }
-
-    if copied < length {
-        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_12,
+    offset: 12,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let p0 = _mm_cvtsi128_si32(v_raw);
+        _mm_insert_epi32::<3>(v_raw, p0)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 12) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 24) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 36) as *mut __m128i, v_pat);
+            copied += 48;
+        }
     }
 }
 
 // Optimization: Specialized implementation for offset 13.
 // The pattern has length 13. We construct a 16-byte vector [P0...P12, P0...P2]
 // using a single shuffle instruction.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_13(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 1, 2);
-    let v_pat = _mm_shuffle_epi8(v_raw, mask);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 13) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 26) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 39) as *mut __m128i, v_pat);
-        copied += 52;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 13;
-    }
-
-    if copied < length {
-        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_13,
+    offset: 13,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let mask = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 1, 2);
+        _mm_shuffle_epi8(v_raw, mask)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 13) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 26) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 39) as *mut __m128i, v_pat);
+            copied += 52;
+        }
     }
 }
 
 // Optimization: Specialized implementation for offset 14.
 // The pattern has length 14. We construct a 16-byte vector [P0...P13, P0...P1]
 // using a single insert instruction.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_14(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let p0 = _mm_cvtsi128_si32(v_raw);
-    let v_pat = _mm_insert_epi16::<7>(v_raw, p0);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 14) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 28) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 42) as *mut __m128i, v_pat);
-        copied += 56;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 14;
-    }
-
-    if copied < length {
-        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_14,
+    offset: 14,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let p0 = _mm_cvtsi128_si32(v_raw);
+        _mm_insert_epi16::<7>(v_raw, p0)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 14) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 28) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 42) as *mut __m128i, v_pat);
+            copied += 56;
+        }
     }
 }
 
@@ -956,29 +1007,29 @@ unsafe fn decompress_offset_14(out_next: *mut u8, src: *const u8, length: usize)
 // using a single insert instruction. This vector allows us to write 16 bytes
 // at a time with a stride of 15 bytes, effectively rotating the pattern by 1 byte
 // each iteration without complex shuffles or register pressure.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "bmi2,ssse3,sse4.1")]
-unsafe fn decompress_offset_15(out_next: *mut u8, src: *const u8, length: usize) {
-    let v_raw = _mm_loadu_si128(src as *const __m128i);
-    let p0 = _mm_cvtsi128_si32(v_raw);
-    let v_pat = _mm_insert_epi8::<15>(v_raw, p0);
-
-    let mut copied = 0;
-    while copied + 64 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
-        _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
-        copied += 60;
-    }
-
-    while copied + 16 <= length {
-        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
-        copied += 15;
-    }
-
-    if copied < length {
-        std::ptr::copy_nonoverlapping(src.add(copied), out_next.add(copied), length - copied);
+decompress_offset_simple! {
+    fn_name: decompress_offset_15,
+    offset: 15,
+    vars: {
+        out_next: out_next,
+        src: src,
+        length: length,
+        v_raw: v_raw,
+        v_pat: v_pat,
+        copied: copied
+    },
+    setup: {
+        let p0 = _mm_cvtsi128_si32(v_raw);
+        _mm_insert_epi8::<15>(v_raw, p0)
+    },
+    unrolled_loops: {
+        while copied + 64 <= length {
+            _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 15) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 30) as *mut __m128i, v_pat);
+            _mm_storeu_si128(out_next.add(copied + 45) as *mut __m128i, v_pat);
+            copied += 60;
+        }
     }
 }
 
