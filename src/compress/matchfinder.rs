@@ -405,6 +405,98 @@ unsafe fn match_len_avx2(a: *const u8, b: *const u8, max_len: usize) -> usize {
 
     let v_zero = _mm256_setzero_si256();
 
+    while len + 256 <= max_len {
+        let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
+        let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
+        let xor1 = _mm256_xor_si256(v1, v2);
+
+        let v3 = _mm256_loadu_si256(a.add(len + 32) as *const __m256i);
+        let v4 = _mm256_loadu_si256(b.add(len + 32) as *const __m256i);
+        let xor2 = _mm256_xor_si256(v3, v4);
+
+        let v5 = _mm256_loadu_si256(a.add(len + 64) as *const __m256i);
+        let v6 = _mm256_loadu_si256(b.add(len + 64) as *const __m256i);
+        let xor3 = _mm256_xor_si256(v5, v6);
+
+        let v7 = _mm256_loadu_si256(a.add(len + 96) as *const __m256i);
+        let v8 = _mm256_loadu_si256(b.add(len + 96) as *const __m256i);
+        let xor4 = _mm256_xor_si256(v7, v8);
+
+        let or1 = _mm256_or_si256(xor1, xor2);
+        let or2 = _mm256_or_si256(xor3, xor4);
+        let or_all_1 = _mm256_or_si256(or1, or2);
+
+        let v9 = _mm256_loadu_si256(a.add(len + 128) as *const __m256i);
+        let v10 = _mm256_loadu_si256(b.add(len + 128) as *const __m256i);
+        let xor5 = _mm256_xor_si256(v9, v10);
+
+        let v11 = _mm256_loadu_si256(a.add(len + 160) as *const __m256i);
+        let v12 = _mm256_loadu_si256(b.add(len + 160) as *const __m256i);
+        let xor6 = _mm256_xor_si256(v11, v12);
+
+        let v13 = _mm256_loadu_si256(a.add(len + 192) as *const __m256i);
+        let v14 = _mm256_loadu_si256(b.add(len + 192) as *const __m256i);
+        let xor7 = _mm256_xor_si256(v13, v14);
+
+        let v15 = _mm256_loadu_si256(a.add(len + 224) as *const __m256i);
+        let v16 = _mm256_loadu_si256(b.add(len + 224) as *const __m256i);
+        let xor8 = _mm256_xor_si256(v15, v16);
+
+        let or3 = _mm256_or_si256(xor5, xor6);
+        let or4 = _mm256_or_si256(xor7, xor8);
+        let or_all_2 = _mm256_or_si256(or3, or4);
+
+        let or_final = _mm256_or_si256(or_all_1, or_all_2);
+
+        if _mm256_testz_si256(or_final, or_final) == 1 {
+            len += 256;
+            continue;
+        }
+
+        if _mm256_testz_si256(or_all_1, or_all_1) == 0 {
+            if _mm256_testz_si256(or1, or1) == 0 {
+                if _mm256_testz_si256(xor1, xor1) == 0 {
+                    let cmp = _mm256_cmpeq_epi8(xor1, v_zero);
+                    let mask = _mm256_movemask_epi8(cmp) as u32;
+                    return len + (!mask).trailing_zeros() as usize;
+                } else {
+                    let cmp = _mm256_cmpeq_epi8(xor2, v_zero);
+                    let mask = _mm256_movemask_epi8(cmp) as u32;
+                    return len + 32 + (!mask).trailing_zeros() as usize;
+                }
+            } else if _mm256_testz_si256(xor3, xor3) == 0 {
+                let cmp = _mm256_cmpeq_epi8(xor3, v_zero);
+                let mask = _mm256_movemask_epi8(cmp) as u32;
+                return len + 64 + (!mask).trailing_zeros() as usize;
+            } else {
+                let cmp = _mm256_cmpeq_epi8(xor4, v_zero);
+                let mask = _mm256_movemask_epi8(cmp) as u32;
+                return len + 96 + (!mask).trailing_zeros() as usize;
+            }
+        } else {
+            len += 128;
+            if _mm256_testz_si256(or3, or3) == 0 {
+                if _mm256_testz_si256(xor5, xor5) == 0 {
+                    let cmp = _mm256_cmpeq_epi8(xor5, v_zero);
+                    let mask = _mm256_movemask_epi8(cmp) as u32;
+                    return len + (!mask).trailing_zeros() as usize;
+                } else {
+                    let cmp = _mm256_cmpeq_epi8(xor6, v_zero);
+                    let mask = _mm256_movemask_epi8(cmp) as u32;
+                    return len + 32 + (!mask).trailing_zeros() as usize;
+                }
+            } else if _mm256_testz_si256(xor7, xor7) == 0 {
+                let cmp = _mm256_cmpeq_epi8(xor7, v_zero);
+                let mask = _mm256_movemask_epi8(cmp) as u32;
+                return len + 64 + (!mask).trailing_zeros() as usize;
+            } else {
+                let cmp = _mm256_cmpeq_epi8(xor8, v_zero);
+                let mask = _mm256_movemask_epi8(cmp) as u32;
+                return len + 96 + (!mask).trailing_zeros() as usize;
+            }
+        }
+    }
+
     while len + 128 <= max_len {
         let v1 = _mm256_loadu_si256(a.add(len) as *const __m256i);
         let v2 = _mm256_loadu_si256(b.add(len) as *const __m256i);
