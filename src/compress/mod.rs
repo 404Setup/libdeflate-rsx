@@ -649,12 +649,13 @@ impl Compressor {
 
         if in_idx == 0 && flush_mode == FlushMode::Finish {
             let start_out = bs.out_idx;
+            let start_bitcount = bs.bitcount;
             if self.compression_level >= 10 {
                 self.compress_near_optimal_block(mf, input, 0, bs, true);
             } else {
                 self.compress_greedy_block(mf, input, 0, bs, 0, true);
             }
-            if bs.out_idx == start_out {
+            if bs.out_idx == start_out && bs.bitcount == start_bitcount {
                 mf.advance(input.len());
                 return (CompressResult::InsufficientSpace, 0, 0);
             }
