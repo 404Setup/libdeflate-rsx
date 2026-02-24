@@ -330,21 +330,27 @@ unsafe fn match_len_sse2(a: *const u8, b: *const u8, max_len: usize) -> usize {
         let v8 = _mm_loadu_si128(b.add(len + 48) as *const __m128i);
         let cmp4 = _mm_cmpeq_epi8(v7, v8);
 
-        let mask1 = _mm_movemask_epi8(cmp1) as u32;
-        let mask2 = _mm_movemask_epi8(cmp2) as u32;
-        let mask3 = _mm_movemask_epi8(cmp3) as u32;
-        let mask4 = _mm_movemask_epi8(cmp4) as u32;
+        // Optimization: AND the comparison results together before extracting the mask.
+        // This reduces the number of `pmovmskb` instructions (high latency/port pressure)
+        // from 4 to 1 in the common case (all match).
+        let cmp12 = _mm_and_si128(cmp1, cmp2);
+        let cmp34 = _mm_and_si128(cmp3, cmp4);
+        let cmp_all = _mm_and_si128(cmp12, cmp34);
 
-        if (mask1 & mask2 & mask3 & mask4) != 0xFFFF {
+        if _mm_movemask_epi8(cmp_all) as u32 != 0xFFFF {
+            let mask1 = _mm_movemask_epi8(cmp1) as u32;
             if mask1 != 0xFFFF {
                 return len + (!mask1).trailing_zeros() as usize;
             }
+            let mask2 = _mm_movemask_epi8(cmp2) as u32;
             if mask2 != 0xFFFF {
                 return len + 16 + (!mask2).trailing_zeros() as usize;
             }
+            let mask3 = _mm_movemask_epi8(cmp3) as u32;
             if mask3 != 0xFFFF {
                 return len + 32 + (!mask3).trailing_zeros() as usize;
             }
+            let mask4 = _mm_movemask_epi8(cmp4) as u32;
             return len + 48 + (!mask4).trailing_zeros() as usize;
         }
 
