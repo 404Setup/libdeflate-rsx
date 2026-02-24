@@ -9,15 +9,17 @@ def get_random_data(size):
     return base_pattern
 
 def generate_file(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
     pattern = get_random_data(100)
-    
+    write_pattern(filename, target_size, pattern)
+
+def write_pattern(filename, target_size, pattern):
+    print(f"Generating {filename} ({target_size} bytes)...")
     with open(filename, 'wb') as f:
         bytes_written = 0
         chunk_size = 1024 * 1024
         large_chunk = pattern * (chunk_size // len(pattern) + 1)
         large_chunk = large_chunk[:chunk_size]
-        
+
         while bytes_written < target_size:
             remaining = target_size - bytes_written
             write_amt = min(remaining, len(large_chunk))
@@ -40,37 +42,42 @@ def main():
     for name, size in sizes.items():
         generate_file(f"bench_data/data_{name}.bin", size)
 
-    generate_offset8("bench_data/data_offset8.bin", 1024 * 1024)
-    generate_offset7("bench_data/data_offset7.bin", 1024 * 1024)
-    generate_offset3("bench_data/data_offset3.bin", 1024 * 1024)
-    generate_offset5("bench_data/data_offset5.bin", 1024 * 1024)
-    generate_offset1("bench_data/data_offset1.bin", 1024 * 1024)
-    generate_offset2("bench_data/data_offset2.bin", 1024 * 1024)
-    generate_offset4("bench_data/data_offset4.bin", 1024 * 1024)
-    generate_offset9("bench_data/data_offset9.bin", 1024 * 1024)
-    generate_offset10("bench_data/data_offset10.bin", 1024 * 1024)
-    generate_offset11("bench_data/data_offset11.bin", 1024 * 1024)
-    generate_offset12("bench_data/data_offset12.bin", 1024 * 1024)
-    generate_offset13("bench_data/data_offset13.bin", 1024 * 1024)
-    generate_offset14("bench_data/data_offset14.bin", 1024 * 1024)
-    generate_offset15("bench_data/data_offset15.bin", 1024 * 1024)
-    generate_offset16("bench_data/data_offset16.bin", 1024 * 1024)
-    generate_offset17("bench_data/data_offset17.bin", 1024 * 1024)
-    generate_offset18("bench_data/data_offset18.bin", 1024 * 1024)
-    generate_offset19("bench_data/data_offset19.bin", 1024 * 1024)
-    generate_offset20("bench_data/data_offset20.bin", 1024 * 1024)
-    generate_offset21("bench_data/data_offset21.bin", 1024 * 1024)
-    generate_offset22("bench_data/data_offset22.bin", 1024 * 1024)
-    generate_offset23("bench_data/data_offset23.bin", 1024 * 1024)
-    generate_offset24("bench_data/data_offset24.bin", 1024 * 1024)
-    generate_offset25("bench_data/data_offset25.bin", 1024 * 1024)
-    generate_offset26("bench_data/data_offset26.bin", 1024 * 1024)
-    generate_offset27("bench_data/data_offset27.bin", 1024 * 1024)
-    generate_offset28("bench_data/data_offset28.bin", 1024 * 1024)
-    generate_offset29("bench_data/data_offset29.bin", 1024 * 1024)
-    generate_offset30("bench_data/data_offset30.bin", 1024 * 1024)
-    generate_offset31("bench_data/data_offset31.bin", 1024 * 1024)
-    generate_offset32("bench_data/data_offset32.bin", 1024 * 1024)
+    patterns = {
+        1: b"1",
+        2: b"12",
+        3: b"123",
+        4: b"1234",
+        5: b"12345",
+        7: b"1234567",
+        8: b"12345678",
+        9: b"123456789",
+        10: b"1234567890",
+        11: b"12345678901",
+        12: b"123456789012",
+        13: b"1234567890123",
+        14: b"12345678901234",
+        15: b"123456789012345",
+        16: b"1234567890123456",
+        17: b"12345678901234567",
+        18: b"123456789012345678",
+        19: b"1234567890123456789",
+        20: b"ABCDEFGHIJKLMNOPQRST",
+        21: b"ABCDEFGHIJKLMNOPQRSTU",
+        22: b"ABCDEFGHIJKLMNOPQRSTUV",
+        23: b"ABCDEFGHIJKLMNOPQRSTUVW",
+        24: b"ABCDEFGHIJKLMNOPQRSTUVWX",
+        25: b"ABCDEFGHIJKLMNOPQRSTUVWXY",
+        26: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        27: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0",
+        28: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        29: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012",
+        30: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+        31: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
+        32: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+    }
+
+    for offset, pattern in patterns.items():
+        write_pattern(f"bench_data/data_offset{offset}.bin", 1024 * 1024, pattern)
 
     # Small match variants
     # For offset N, we want matches of length N (or close to N).
@@ -90,187 +97,6 @@ def generate_offset_small(filename, target_size, pattern):
             # Break match with random literal
             f.write(bytes([random.randint(0, 255)]))
             bytes_written += len(pattern) * 2 + 1
-
-def generate_offset1(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset12(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"123456789012"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset2(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset4(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset3(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"123"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset8(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12345678"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset7(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234567"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset5(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12345"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset9(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"123456789"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset10(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234567890"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset11(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12345678901"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset15(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"123456789012345"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset13(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234567890123"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset14(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12345678901234"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset16(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234567890123456"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset17(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"12345678901234567"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset18(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"123456789012345678"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset19(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    pattern = b"1234567890123456789"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset21(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 21 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTU"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset20(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 20 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRST"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset22(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 22 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUV"
-    write_pattern(filename, target_size, pattern)
-
-def write_pattern(filename, target_size, pattern):
-    with open(filename, 'wb') as f:
-        bytes_written = 0
-        chunk_size = 1024 * 1024
-        large_chunk = pattern * (chunk_size // len(pattern) + 1)
-        large_chunk = large_chunk[:chunk_size]
-
-        while bytes_written < target_size:
-            remaining = target_size - bytes_written
-            write_amt = min(remaining, len(large_chunk))
-            f.write(large_chunk[:write_amt])
-            bytes_written += write_amt
-
-def generate_offset23(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 23 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVW"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset24(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 24 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWX"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset25(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 25 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXY"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset26(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 26 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset27(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 27 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset28(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 28 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset29(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 29 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset30(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 30 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset31(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 31 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
-    write_pattern(filename, target_size, pattern)
-
-def generate_offset32(filename, target_size):
-    print(f"Generating {filename} ({target_size} bytes)...")
-    # 32 unique bytes to avoid inner matches
-    pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
-    write_pattern(filename, target_size, pattern)
 
 if __name__ == "__main__":
     main()
