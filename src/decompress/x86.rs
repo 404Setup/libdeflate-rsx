@@ -950,7 +950,29 @@ unsafe fn decompress_offset_17(out_next: *mut u8, src: *const u8, v: __m128i, le
     let mut v2 = _mm_alignr_epi8(v1, v0, 15);
 
     let mut copied = 16;
-    while copied + 48 <= length {
+    while copied + 96 <= length {
+        let next_v0 = _mm_alignr_epi8(v1, v0, 14);
+        let next_v1 = _mm_alignr_epi8(v2, v1, 14);
+        let next_v2 = _mm_alignr_epi8(next_v0, v2, 14);
+
+        let next_v3 = _mm_alignr_epi8(next_v1, next_v0, 14);
+        let next_v4 = _mm_alignr_epi8(next_v2, next_v1, 14);
+        let next_v5 = _mm_alignr_epi8(next_v3, next_v2, 14);
+
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, next_v0);
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, next_v1);
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, next_v2);
+        _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, next_v3);
+
+        v0 = next_v3;
+        v1 = next_v4;
+        v2 = next_v5;
+        copied += 96;
+    }
+
+    if copied + 48 <= length {
         let next_v0 = _mm_alignr_epi8(v1, v0, 14);
         let next_v1 = _mm_alignr_epi8(v2, v1, 14);
         let next_v2 = _mm_alignr_epi8(next_v0, v2, 14);
