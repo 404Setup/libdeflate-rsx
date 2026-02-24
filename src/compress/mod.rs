@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use std::cmp::min;
 use std::io;
 use std::mem::MaybeUninit;
+use std::sync::OnceLock;
 
 const LENGTH_WRITE_TABLE: [u32; 260] = [
     3, 3, 3, 3, 16777220, 33554437, 50331654, 67108871, 83886088, 100663305, 117440522, 134283275,
@@ -126,6 +127,107 @@ const SLOT_TO_OBS_IDX: [u8; 32] = [
 pub const MAX_LITLEN_CODEWORD_LEN: usize = 14;
 pub const MAX_OFFSET_CODEWORD_LEN: usize = 15;
 pub const MAX_PRE_CODEWORD_LEN: usize = 7;
+
+fn gen_codewords_from_lens(lens: &[u8], codewords: &mut [u32], max_len: usize) {
+    let mut len_counts = [0u32; 16];
+    for &l in lens {
+        if l > 0 {
+            len_counts[l as usize] += 1;
+        }
+    }
+    let mut next_code = [0u32; 16];
+    let mut code = 0u32;
+    for len in 1..=max_len {
+        code = (code + len_counts[len - 1]) << 1;
+        next_code[len] = code;
+    }
+    for i in 0..lens.len() {
+        if lens[i] > 0 {
+            let c = next_code[lens[i] as usize];
+            next_code[lens[i] as usize] += 1;
+            codewords[i] = (c as u16).reverse_bits() as u32 >> (16 - lens[i]);
+        }
+    }
+}
+
+struct StaticTables {
+    litlen_lens: [u8; DEFLATE_NUM_LITLEN_SYMS],
+    offset_lens: [u8; DEFLATE_NUM_OFFSET_SYMS],
+    litlen_table: [u64; DEFLATE_NUM_LITLEN_SYMS],
+    offset_table: [u64; DEFLATE_NUM_OFFSET_SYMS],
+    match_len_table: [u64; DEFLATE_MAX_MATCH_LEN + 1],
+}
+
+fn compute_static_tables() -> StaticTables {
+    let mut litlen_lens = [0u8; DEFLATE_NUM_LITLEN_SYMS];
+    let mut offset_lens = [0u8; DEFLATE_NUM_OFFSET_SYMS];
+    let mut litlen_codewords = [0u32; DEFLATE_NUM_LITLEN_SYMS];
+    let mut offset_codewords = [0u32; DEFLATE_NUM_OFFSET_SYMS];
+    let mut litlen_table = [0u64; DEFLATE_NUM_LITLEN_SYMS];
+    let mut offset_table = [0u64; DEFLATE_NUM_OFFSET_SYMS];
+    let mut match_len_table = [0u64; DEFLATE_MAX_MATCH_LEN + 1];
+
+    let mut i = 0;
+    while i < 144 {
+        litlen_lens[i] = 8;
+        i += 1;
+    }
+    while i < 256 {
+        litlen_lens[i] = 9;
+        i += 1;
+    }
+    while i < 280 {
+        litlen_lens[i] = 7;
+        i += 1;
+    }
+    while i < 288 {
+        litlen_lens[i] = 8;
+        i += 1;
+    }
+    for i in 0..32 {
+        offset_lens[i] = 5;
+    }
+
+    gen_codewords_from_lens(&litlen_lens, &mut litlen_codewords, 9);
+    gen_codewords_from_lens(&offset_lens, &mut offset_codewords, 5);
+
+    for i in 0..DEFLATE_NUM_LITLEN_SYMS {
+        litlen_table[i] = (litlen_codewords[i] as u64) | ((litlen_lens[i] as u64) << 32);
+    }
+    for i in 0..DEFLATE_NUM_OFFSET_SYMS {
+        let mut entry = (offset_codewords[i] as u64) | ((offset_lens[i] as u64) << 32);
+        if i < 30 {
+            // SAFETY: Arrays are static consts of size 30.
+            entry |= (unsafe { *OFFSET_EXTRA_BITS_TABLE.get_unchecked(i) } as u64) << 40;
+            entry |= (unsafe { *OFFSET_BASE_TABLE.get_unchecked(i) } as u64) << 48;
+        }
+        offset_table[i] = entry;
+    }
+
+    for len in 3..=DEFLATE_MAX_MATCH_LEN {
+        let len_info = unsafe { *LENGTH_WRITE_TABLE.get_unchecked(len) };
+        let slot = (len_info >> 24) as usize;
+        let extra = (len_info >> 16) as u8;
+        let base = len_info as u16;
+
+        let huff_entry = unsafe { *litlen_table.get_unchecked(257 + slot) };
+        let code = huff_entry as u16;
+        let huff_len = (huff_entry >> 32) as u8;
+
+        match_len_table[len] = (code as u64)
+            | ((huff_len as u64) << 16)
+            | ((extra as u64) << 24)
+            | ((base as u64) << 32);
+    }
+
+    StaticTables {
+        litlen_lens,
+        offset_lens,
+        litlen_table,
+        offset_table,
+        match_len_table,
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 #[must_use = "Compression result must be checked to ensure data integrity"]
@@ -1879,50 +1981,14 @@ impl Compressor {
     }
 
     fn load_static_huffman_codes(&mut self) {
-        let mut i = 0;
-        while i < 144 {
-            self.litlen_lens[i] = 8;
-            i += 1;
-        }
-        while i < 256 {
-            self.litlen_lens[i] = 9;
-            i += 1;
-        }
-        while i < 280 {
-            self.litlen_lens[i] = 7;
-            i += 1;
-        }
-        while i < 288 {
-            self.litlen_lens[i] = 8;
-            i += 1;
-        }
-        for i in 0..32 {
-            self.offset_lens[i] = 5;
-        }
-        fn gen_codewords_from_lens(lens: &[u8], codewords: &mut [u32], max_len: usize) {
-            let mut len_counts = vec![0u32; max_len + 1];
-            for &l in lens {
-                if l > 0 {
-                    len_counts[l as usize] += 1;
-                }
-            }
-            let mut next_code = vec![0u32; max_len + 1];
-            let mut code = 0u32;
-            for len in 1..=max_len {
-                code = (code + len_counts[len - 1]) << 1;
-                next_code[len] = code;
-            }
-            for i in 0..lens.len() {
-                if lens[i] > 0 {
-                    let c = next_code[lens[i] as usize];
-                    next_code[lens[i] as usize] += 1;
-                    codewords[i] = (c as u16).reverse_bits() as u32 >> (16 - lens[i]);
-                }
-            }
-        }
-        gen_codewords_from_lens(&self.litlen_lens, &mut self.litlen_codewords, 9);
-        gen_codewords_from_lens(&self.offset_lens, &mut self.offset_codewords, 5);
-        self.update_huffman_tables();
+        static STATIC_TABLES: OnceLock<StaticTables> = OnceLock::new();
+        let tables = STATIC_TABLES.get_or_init(compute_static_tables);
+
+        self.litlen_lens.copy_from_slice(&tables.litlen_lens);
+        self.offset_lens.copy_from_slice(&tables.offset_lens);
+        self.litlen_table.copy_from_slice(&tables.litlen_table);
+        self.offset_table.copy_from_slice(&tables.offset_table);
+        self.match_len_table.copy_from_slice(&tables.match_len_table);
     }
 
     #[inline(always)]
