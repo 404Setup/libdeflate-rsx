@@ -827,10 +827,9 @@ impl MatchFinder {
             }
 
             let mut match_ok = true;
-            if best_len >= 3
-                && *match_ptr.add(best_len) != *src.add(best_len) {
-                    match_ok = false;
-                }
+            if best_len >= 3 && *match_ptr.add(best_len) != *src.add(best_len) {
+                match_ok = false;
+            }
 
             if match_ok {
                 if safe_to_read_u32 {

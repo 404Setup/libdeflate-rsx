@@ -212,7 +212,11 @@ fn test_limit_boundary() {
     // We expect InvalidData because input is zeros (garbage deflate), but NOT InvalidInput (limit check).
     let result = decompressor.decompress_deflate(&data, expected_size);
     if let Err(e) = &result {
-        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Boundary 100 should pass limit check");
+        assert_ne!(
+            e.kind(),
+            io::ErrorKind::InvalidInput,
+            "Boundary 100 should pass limit check"
+        );
     }
 
     // expected_size = 101. Should fail limit check.
@@ -237,7 +241,11 @@ fn test_zero_limits() {
     // expected_size = 0. Should pass limit check.
     let result = decompressor.decompress_deflate(&data, 0);
     if let Err(e) = &result {
-        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Size 0 should pass limit check");
+        assert_ne!(
+            e.kind(),
+            io::ErrorKind::InvalidInput,
+            "Size 0 should pass limit check"
+        );
     }
 
     // Reset memory limit
@@ -250,7 +258,11 @@ fn test_zero_limits() {
     // expected_size = 4096. Should pass.
     let result = decompressor.decompress_deflate(&data, 4096);
     if let Err(e) = &result {
-        assert_ne!(e.kind(), io::ErrorKind::InvalidInput, "Size 4096 should pass zero ratio limit check");
+        assert_ne!(
+            e.kind(),
+            io::ErrorKind::InvalidInput,
+            "Size 4096 should pass zero ratio limit check"
+        );
     }
 
     // expected_size = 4097. Should fail.

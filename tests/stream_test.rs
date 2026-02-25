@@ -28,7 +28,10 @@ impl Write for ErrorFlushWriter {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "flush error"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "flush error",
+        ))
     }
 }
 

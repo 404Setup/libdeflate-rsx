@@ -77,9 +77,7 @@ impl Compressor {
         ) -> (CompressResult, usize),
     {
         let mut output = Vec::new();
-        output
-            .try_reserve_exact(bound)
-            .map_err(io::Error::other)?;
+        output.try_reserve_exact(bound).map_err(io::Error::other)?;
 
         // Use spare_capacity_mut to avoid zero-initialization.
         // Since len is 0, this returns the entire capacity as MaybeUninit.
@@ -95,9 +93,7 @@ impl Compressor {
                 }
                 Ok(output)
             }
-            CompressResult::InsufficientSpace => {
-                Err(io::Error::other("Insufficient space"))
-            }
+            CompressResult::InsufficientSpace => Err(io::Error::other("Insufficient space")),
         }
     }
 

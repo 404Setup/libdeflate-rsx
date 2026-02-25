@@ -1973,10 +1973,9 @@ impl Compressor {
                 if !bs.write_bits(extra, 3) {
                     return false;
                 }
-            } else if sym == 18
-                && !bs.write_bits(extra, 7) {
-                    return false;
-                }
+            } else if sym == 18 && !bs.write_bits(extra, 7) {
+                return false;
+            }
         }
         true
     }
@@ -2109,7 +2108,7 @@ impl Compressor {
         for len in 3..=DEFLATE_MAX_MATCH_LEN {
             let len_info = unsafe { *LENGTH_WRITE_TABLE.get_unchecked(len) };
             let len_slot = (len_info >> 24) as usize;
-            let len_extra_bits = (len_info >> 16) & 0xFF ;
+            let len_extra_bits = (len_info >> 16) & 0xFF;
 
             let len_cost =
                 unsafe { *self.litlen_lens.get_unchecked(257 + len_slot) } as u32 + len_extra_bits;

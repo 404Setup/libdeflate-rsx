@@ -274,19 +274,18 @@ impl<R: Read> Read for DeflateDecoder<R> {
         }
 
         loop {
-            if self.write_pos >= 64 * 1024
-                && self.read_pos >= 32 * 1024 {
-                    self.window.copy_within(
-                        self.read_pos - 32 * 1024..self.write_pos,
-                        32 * 1024 - (self.read_pos - 32 * 1024),
-                    );
+            if self.write_pos >= 64 * 1024 && self.read_pos >= 32 * 1024 {
+                self.window.copy_within(
+                    self.read_pos - 32 * 1024..self.write_pos,
+                    32 * 1024 - (self.read_pos - 32 * 1024),
+                );
 
-                    let amount_to_keep = 32 * 1024;
-                    let shift = self.write_pos - amount_to_keep;
-                    self.window.copy_within(shift..self.write_pos, 0);
-                    self.write_pos = amount_to_keep;
-                    self.read_pos -= shift;
-                }
+                let amount_to_keep = 32 * 1024;
+                let shift = self.write_pos - amount_to_keep;
+                self.window.copy_within(shift..self.write_pos, 0);
+                self.write_pos = amount_to_keep;
+                self.read_pos -= shift;
+            }
 
             let mut output_full = false;
             if self.input_pos < self.input_cap {

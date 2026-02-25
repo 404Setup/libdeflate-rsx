@@ -36,13 +36,19 @@ fn test_with_buffer_size() {
     // The buffer size (100) is exceeded by 150 bytes, so flush_buffer(false) should be called.
     // flush_buffer compresses and writes to the underlying writer.
     let compressed_len = writer_data.lock().unwrap().len();
-    assert!(compressed_len > 0, "Encoder should have flushed when buffer limit was exceeded");
+    assert!(
+        compressed_len > 0,
+        "Encoder should have flushed when buffer limit was exceeded"
+    );
 
     // Finish the stream
     encoder.finish().unwrap();
 
     let final_len = writer_data.lock().unwrap().len();
-    assert!(final_len > compressed_len, "Finish should write more data (footer/final block)");
+    assert!(
+        final_len > compressed_len,
+        "Finish should write more data (footer/final block)"
+    );
 }
 
 #[test]
@@ -60,7 +66,10 @@ fn test_default_buffer_size() {
 
     // Should not have flushed yet as 150 < default buffer size
     let compressed_len = writer_data.lock().unwrap().len();
-    assert_eq!(compressed_len, 0, "Encoder should NOT have flushed with default buffer size");
+    assert_eq!(
+        compressed_len, 0,
+        "Encoder should NOT have flushed with default buffer size"
+    );
 
     encoder.finish().unwrap();
     assert!(writer_data.lock().unwrap().len() > 0);
