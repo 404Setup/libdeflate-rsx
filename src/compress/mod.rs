@@ -214,10 +214,14 @@ fn compute_static_tables() -> StaticTables {
         let code = huff_entry as u16;
         let huff_len = (huff_entry >> 32) as u8;
 
-        match_len_table[len] = (code as u64)
-            | ((huff_len as u64) << 16)
-            | ((extra as u64) << 24)
-            | ((base as u64) << 32);
+        // Optimization: Precompute the value to be written to bitstream.
+        // val = code | ((len - base) << huff_len)
+        // total_len = huff_len + extra_bits
+        let diff = (len as u32).wrapping_sub(base as u32);
+        let total_len = huff_len as u32 + extra as u32;
+        let val = (code as u32) | (diff << huff_len);
+
+        match_len_table[len] = (val as u64) | ((total_len as u64) << 32);
     }
 
     StaticTables {
@@ -535,10 +539,11 @@ impl Compressor {
             let code = huff_entry as u16;
             let huff_len = (huff_entry >> 32) as u8;
 
-            self.match_len_table[len] = (code as u64)
-                | ((huff_len as u64) << 16)
-                | ((extra as u64) << 24)
-                | ((base as u64) << 32);
+            let diff = (len as u32).wrapping_sub(base as u32);
+            let total_len = huff_len as u32 + extra as u32;
+            let val = (code as u32) | (diff << huff_len);
+
+            self.match_len_table[len] = (val as u64) | ((total_len as u64) << 32);
         }
     }
 
@@ -2033,13 +2038,8 @@ impl Compressor {
         off_slot: usize,
     ) {
         let entry = *self.match_len_table.get_unchecked(len);
-        let code = entry as u16 as u32;
-        let huff_len = (entry >> 16) as u8 as u32;
-        let extra_bits = (entry >> 24) as u8 as u32;
-        let base = (entry >> 32) as u16 as u32;
-
-        let len_val = code | ((len as u32).wrapping_sub(base) << huff_len);
-        let len_len = huff_len + extra_bits;
+        let len_val = entry as u32;
+        let len_len = (entry >> 32) as u32;
 
         let entry = *self.offset_table.get_unchecked(off_slot);
         let off_code = entry as u32;
@@ -2060,13 +2060,8 @@ impl Compressor {
 
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) -> bool {
         let entry = unsafe { *self.match_len_table.get_unchecked(len) };
-        let code = entry as u16 as u32;
-        let huff_len = (entry >> 16) as u8 as u32;
-        let extra_bits = (entry >> 24) as u8 as u32;
-        let base = (entry >> 32) as u16 as u32;
-
-        let len_val = code | ((len as u32).wrapping_sub(base) << huff_len);
-        let len_len = huff_len + extra_bits;
+        let len_val = entry as u32;
+        let len_len = (entry >> 32) as u32;
 
         if !unsafe { bs.write_bits_upto_32(len_val, len_len) } {
             return false;
