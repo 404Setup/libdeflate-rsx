@@ -4,7 +4,7 @@ use core::arch::x86::*;
 use core::arch::x86_64::*;
 
 const DIVISOR: u32 = 65521;
-const BLOCK_SIZE: usize = 2048;
+const BLOCK_SIZE: usize = 5552;
 
 macro_rules! adler32_chunk8 {
     ($s1:expr, $s2:expr, $ptr:expr, $len:expr) => {

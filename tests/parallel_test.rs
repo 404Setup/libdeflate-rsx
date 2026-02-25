@@ -110,5 +110,8 @@ fn test_parallel_insufficient_space() {
     assert!(result.is_err());
     // We expect "Insufficient space" or similar error
     let err = result.unwrap_err();
-    assert!(err.to_string().contains("Insufficient space") || err.to_string().contains("Compression failed"));
+    assert!(
+        err.to_string().contains("Insufficient space")
+            || err.to_string().contains("Compression failed")
+    );
 }

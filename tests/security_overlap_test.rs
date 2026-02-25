@@ -9,10 +9,16 @@ mod tests {
         let mut buffer = vec![0u8; 1024];
 
         // Helper to test overlap for a specific format
-        let mut check_overlap = |input_range: std::ops::Range<usize>, output_range: std::ops::Range<usize>, method: &str| {
+        let mut check_overlap = |input_range: std::ops::Range<usize>,
+                                 output_range: std::ops::Range<usize>,
+                                 method: &str| {
             let ptr = buffer.as_mut_ptr();
-            let input_slice = unsafe { std::slice::from_raw_parts(ptr.add(input_range.start), input_range.len()) };
-            let output_slice = unsafe { std::slice::from_raw_parts_mut(ptr.add(output_range.start), output_range.len()) };
+            let input_slice = unsafe {
+                std::slice::from_raw_parts(ptr.add(input_range.start), input_range.len())
+            };
+            let output_slice = unsafe {
+                std::slice::from_raw_parts_mut(ptr.add(output_range.start), output_range.len())
+            };
 
             let res = match method {
                 "deflate" => compressor.compress_deflate_into(input_slice, output_slice),
@@ -21,7 +27,11 @@ mod tests {
                 _ => panic!("Unknown method"),
             };
 
-            assert!(res.is_err(), "Expected error for overlap with method {}", method);
+            assert!(
+                res.is_err(),
+                "Expected error for overlap with method {}",
+                method
+            );
             let err = res.unwrap_err();
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
             assert_eq!(err.to_string(), "Input and output buffers overlap");
@@ -65,10 +75,16 @@ mod tests {
         let mut buffer = vec![0u8; 1024];
 
         // Helper to test overlap for a specific format
-        let mut check_overlap = |input_range: std::ops::Range<usize>, output_range: std::ops::Range<usize>, method: &str| {
+        let mut check_overlap = |input_range: std::ops::Range<usize>,
+                                 output_range: std::ops::Range<usize>,
+                                 method: &str| {
             let ptr = buffer.as_mut_ptr();
-            let input_slice = unsafe { std::slice::from_raw_parts(ptr.add(input_range.start), input_range.len()) };
-            let output_slice = unsafe { std::slice::from_raw_parts_mut(ptr.add(output_range.start), output_range.len()) };
+            let input_slice = unsafe {
+                std::slice::from_raw_parts(ptr.add(input_range.start), input_range.len())
+            };
+            let output_slice = unsafe {
+                std::slice::from_raw_parts_mut(ptr.add(output_range.start), output_range.len())
+            };
 
             let res = match method {
                 "deflate" => decompressor.decompress_deflate_into(input_slice, output_slice),
@@ -77,7 +93,11 @@ mod tests {
                 _ => panic!("Unknown method"),
             };
 
-            assert!(res.is_err(), "Expected error for overlap with method {}", method);
+            assert!(
+                res.is_err(),
+                "Expected error for overlap with method {}",
+                method
+            );
             let err = res.unwrap_err();
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
             assert_eq!(err.to_string(), "Input and output buffers overlap");

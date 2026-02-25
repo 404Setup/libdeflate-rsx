@@ -222,7 +222,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
             *CRC32_SLICE8_TABLE.get_unchecked(0x300 + (crc as u8) as usize)
                 ^ *CRC32_SLICE8_TABLE.get_unchecked(0x200 + ((crc >> 8) as u8) as usize)
                 ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + ((crc >> 16) as u8) as usize)
-                ^ *CRC32_SLICE8_TABLE.get_unchecked(((crc >> 24) as u8) as usize )
+                ^ *CRC32_SLICE8_TABLE.get_unchecked(((crc >> 24) as u8) as usize)
         };
         unsafe {
             ptr = ptr.add(4);
@@ -245,7 +245,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
                     (crc >> 24)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x200 + idx0 as usize)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx1 as usize)
-                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx2 as usize )
+                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx2 as usize)
                 };
             }
             2 => {
@@ -259,7 +259,7 @@ pub fn crc32_slice8(mut crc: u32, p: &[u8]) -> u32 {
                 crc = unsafe {
                     (crc >> 16)
                         ^ *CRC32_SLICE8_TABLE.get_unchecked(0x100 + idx0 as usize)
-                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx1 as usize )
+                        ^ *CRC32_SLICE8_TABLE.get_unchecked(idx1 as usize)
                 };
             }
             1 => {
