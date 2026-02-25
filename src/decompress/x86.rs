@@ -592,6 +592,9 @@ unsafe fn decompress_offset_cycle3<const SHIFT: i32>(
     let mut v1 = v1;
 
     let mut copied = 16;
+    // Optimization: Unroll loop to process 96 bytes per iteration (6 vectors).
+    // This reduces loop overhead and allows better pipelining of the alignr dependency chains
+    // compared to the original 48-byte stride.
     while copied + 96 <= length {
         let next_v0 = _mm_alignr_epi8::<SHIFT>(v1, v0);
         let next_v1 = _mm_alignr_epi8::<SHIFT>(v2, v1);
