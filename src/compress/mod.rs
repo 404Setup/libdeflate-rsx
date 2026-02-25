@@ -1895,14 +1895,14 @@ impl Compressor {
     }
 
     #[inline(always)]
-    unsafe fn write_literal_fast(&self, bs: &mut Bitstream, lit: u8) {
+    unsafe fn get_literal_code(&self, lit: u8) -> (u64, u32) {
         let sym = lit as usize;
         let entry = *self.litlen_table.get_unchecked(sym);
-        bs.write_bits_unchecked_fast(entry as u32, (entry >> 32) as u32)
+        (entry as u32 as u64, (entry >> 32) as u32)
     }
 
     #[inline(always)]
-    unsafe fn write_literals_2(&self, bs: &mut Bitstream, lit1: u8, lit2: u8) {
+    unsafe fn get_literals_2_code(&self, lit1: u8, lit2: u8) -> (u64, u32) {
         let entry1 = *self.litlen_table.get_unchecked(lit1 as usize);
         let entry2 = *self.litlen_table.get_unchecked(lit2 as usize);
 
@@ -1912,18 +1912,17 @@ impl Compressor {
         let code2 = entry2 as u32;
         let len2 = (entry2 >> 32) as u32;
 
-        bs.write_bits_unchecked_fast(code1 | (code2 << len1), len1 + len2);
+        ((code1 | (code2 << len1)) as u64, len1 + len2)
     }
 
     #[inline(always)]
-    unsafe fn write_literals_4(
+    unsafe fn get_literals_4_code(
         &self,
-        bs: &mut Bitstream,
         lit1: u8,
         lit2: u8,
         lit3: u8,
         lit4: u8,
-    ) {
+    ) -> (u64, u32) {
         let entry1 = *self.litlen_table.get_unchecked(lit1 as usize);
         let entry2 = *self.litlen_table.get_unchecked(lit2 as usize);
         let entry3 = *self.litlen_table.get_unchecked(lit3 as usize);
@@ -1947,7 +1946,7 @@ impl Compressor {
         let combined_code = code1 | (code2 << len1) | (code3 << len12) | (code4 << len123);
         let combined_len = len123 + len4;
 
-        bs.write_bits_unchecked_fast_64(combined_code, combined_len);
+        (combined_code, combined_len)
     }
 
     fn write_sequences_to_bitstream(
@@ -1957,58 +1956,201 @@ impl Compressor {
         start_pos: usize,
     ) -> bool {
         let mut in_pos = start_pos;
+
+        let mut bitbuf = bs.bitbuf;
+        let mut bitcount = bs.bitcount;
+        let mut out_idx = bs.out_idx;
+        let out_ptr = bs.output.as_mut_ptr() as *mut u8;
+        let out_len = bs.output.len();
+
         for seq in &self.sequences {
             if seq.litrunlen > 0 {
-                // Check if we have enough space to write all literals in this run without bounds checks.
-                // Heuristic: Each literal expands to at most 15 bits. Writing flushes every 32/64 bits.
-                // We add 16 bytes margin for safety.
-                if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
+                if out_idx + 16 + (seq.litrunlen as usize * 2) < out_len {
                     let mut lit_remain = seq.litrunlen as usize;
                     while lit_remain >= 4 {
                         unsafe {
-                            self.write_literals_4(
-                                bs,
-                                input[in_pos],
-                                input[in_pos + 1],
-                                input[in_pos + 2],
-                                input[in_pos + 3],
+                            let (code, len) = self.get_literals_4_code(
+                                *input.get_unchecked(in_pos),
+                                *input.get_unchecked(in_pos + 1),
+                                *input.get_unchecked(in_pos + 2),
+                                *input.get_unchecked(in_pos + 3),
                             );
+                            // Inline write_bits_unchecked_fast_64
+                            let new_bitcount = bitcount + len;
+                            if new_bitcount >= 64 {
+                                let low = bitbuf | (code << bitcount);
+                                let high = code >> (64 - bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u64,
+                                    low.to_le(),
+                                );
+                                out_idx += 8;
+                                bitbuf = high;
+                                bitcount = new_bitcount - 64;
+                            } else {
+                                bitbuf |= code << bitcount;
+                                if new_bitcount >= 32 {
+                                    std::ptr::write_unaligned(
+                                        out_ptr.add(out_idx) as *mut u32,
+                                        (bitbuf as u32).to_le(),
+                                    );
+                                    out_idx += 4;
+                                    bitbuf >>= 32;
+                                    bitcount = new_bitcount - 32;
+                                } else {
+                                    bitcount = new_bitcount;
+                                }
+                            }
                         }
                         in_pos += 4;
                         lit_remain -= 4;
                     }
                     while lit_remain >= 2 {
-                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
+                        unsafe {
+                            let (code, len) = self.get_literals_2_code(
+                                *input.get_unchecked(in_pos),
+                                *input.get_unchecked(in_pos + 1),
+                            );
+                            let new_bitcount = bitcount + len;
+                            if new_bitcount >= 32 {
+                                let buf = bitbuf | ((code as u64) << bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u32,
+                                    (buf as u32).to_le(),
+                                );
+                                out_idx += 4;
+                                bitbuf = buf >> 32;
+                                bitcount = new_bitcount - 32;
+                            } else {
+                                bitbuf |= (code as u64) << bitcount;
+                                bitcount = new_bitcount;
+                            }
+                        }
                         in_pos += 2;
                         lit_remain -= 2;
                     }
                     if lit_remain > 0 {
-                        unsafe { self.write_literal_fast(bs, input[in_pos]) };
+                        unsafe {
+                            let (code, len) = self.get_literal_code(*input.get_unchecked(in_pos));
+                            let new_bitcount = bitcount + len;
+                            if new_bitcount >= 32 {
+                                let buf = bitbuf | ((code as u64) << bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u32,
+                                    (buf as u32).to_le(),
+                                );
+                                out_idx += 4;
+                                bitbuf = buf >> 32;
+                                bitcount = new_bitcount - 32;
+                            } else {
+                                bitbuf |= (code as u64) << bitcount;
+                                bitcount = new_bitcount;
+                            }
+                        }
                         in_pos += 1;
                     }
                 } else {
+                    bs.bitbuf = bitbuf;
+                    bs.bitcount = bitcount;
+                    bs.out_idx = out_idx;
                     for _ in 0..seq.litrunlen {
                         if !self.write_literal(bs, input[in_pos]) {
                             return false;
                         }
                         in_pos += 1;
                     }
+                    bitbuf = bs.bitbuf;
+                    bitcount = bs.bitcount;
+                    out_idx = bs.out_idx;
                 }
             }
             let len = seq.len();
             if len >= 3 {
                 let offset = seq.offset as usize;
                 let off_slot = seq.off_slot();
-                if bs.out_idx + 16 < bs.output.len() {
+                if out_idx + 16 < out_len {
                     unsafe {
-                        self.write_match_fast(bs, len as usize, offset, off_slot);
+                        let entry = *self.match_len_table.get_unchecked(len as usize);
+                        let len_val = entry as u32;
+                        let len_len = (entry >> 32) as u32;
+
+                        let entry_off = *self.offset_table.get_unchecked(off_slot);
+                        let off_code = entry_off as u32;
+                        let off_len = (entry_off >> 32) as u8 as u32;
+                        let extra_bits = (entry_off >> 40) as u8 as u32;
+                        let base = (entry_off >> 48) as u16 as u32;
+
+                        let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
+                        let off_len_total = off_len + extra_bits;
+
+                        let combined_len = len_len + off_len_total;
+
+                        if combined_len <= 32 {
+                            let code = len_val | (off_val << len_len);
+                            let new_bitcount = bitcount + combined_len;
+                            if new_bitcount >= 32 {
+                                let buf = bitbuf | ((code as u64) << bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u32,
+                                    (buf as u32).to_le(),
+                                );
+                                out_idx += 4;
+                                bitbuf = buf >> 32;
+                                bitcount = new_bitcount - 32;
+                            } else {
+                                bitbuf |= (code as u64) << bitcount;
+                                bitcount = new_bitcount;
+                            }
+                        } else {
+                            let new_bitcount = bitcount + len_len;
+                            if new_bitcount >= 32 {
+                                let buf = bitbuf | ((len_val as u64) << bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u32,
+                                    (buf as u32).to_le(),
+                                );
+                                out_idx += 4;
+                                bitbuf = buf >> 32;
+                                bitcount = new_bitcount - 32;
+                            } else {
+                                bitbuf |= (len_val as u64) << bitcount;
+                                bitcount = new_bitcount;
+                            }
+
+                            let new_bitcount = bitcount + off_len_total;
+                            if new_bitcount >= 32 {
+                                let buf = bitbuf | ((off_val as u64) << bitcount);
+                                std::ptr::write_unaligned(
+                                    out_ptr.add(out_idx) as *mut u32,
+                                    (buf as u32).to_le(),
+                                );
+                                out_idx += 4;
+                                bitbuf = buf >> 32;
+                                bitcount = new_bitcount - 32;
+                            } else {
+                                bitbuf |= (off_val as u64) << bitcount;
+                                bitcount = new_bitcount;
+                            }
+                        }
                     }
-                } else if !self.write_match(bs, len as usize, offset, off_slot) {
-                    return false;
+                } else {
+                    bs.bitbuf = bitbuf;
+                    bs.bitcount = bitcount;
+                    bs.out_idx = out_idx;
+                    if !self.write_match(bs, len as usize, offset, off_slot) {
+                        return false;
+                    }
+                    bitbuf = bs.bitbuf;
+                    bitcount = bs.bitcount;
+                    out_idx = bs.out_idx;
                 }
                 in_pos += len as usize;
             }
         }
+
+        bs.bitbuf = bitbuf;
+        bs.bitcount = bitcount;
+        bs.out_idx = out_idx;
         true
     }
 
@@ -2020,35 +2162,6 @@ impl Compressor {
     fn write_sym(&self, bs: &mut Bitstream, sym: usize) -> bool {
         let entry = unsafe { *self.litlen_table.get_unchecked(sym) };
         unsafe { bs.write_bits_unchecked(entry as u32, (entry >> 32) as u32) }
-    }
-
-    #[inline(always)]
-    unsafe fn write_match_fast(
-        &self,
-        bs: &mut Bitstream,
-        len: usize,
-        offset: usize,
-        off_slot: usize,
-    ) {
-        let entry = *self.match_len_table.get_unchecked(len);
-        let len_val = entry as u32;
-        let len_len = (entry >> 32) as u32;
-
-        let entry = *self.offset_table.get_unchecked(off_slot);
-        let off_code = entry as u32;
-        let off_len = (entry >> 32) as u8 as u32;
-        let extra_bits = (entry >> 40) as u8 as u32;
-        let base = (entry >> 48) as u16 as u32;
-
-        let off_val = off_code | ((offset as u32).wrapping_sub(base) << off_len);
-        let off_len_total = off_len + extra_bits;
-
-        if len_len + off_len_total <= 32 {
-            bs.write_bits_unchecked_fast(len_val | (off_val << len_len), len_len + off_len_total);
-        } else {
-            bs.write_bits_unchecked_fast(len_val, len_len);
-            bs.write_bits_unchecked_fast(off_val, off_len_total);
-        }
     }
 
     fn write_match(&self, bs: &mut Bitstream, len: usize, offset: usize, off_slot: usize) -> bool {
