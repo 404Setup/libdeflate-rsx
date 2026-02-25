@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::sync::OnceLock;
 
 const DIVISOR: u32 = 65521;
-const MAX_CHUNK_LEN: usize = 5552;
+const MAX_CHUNK_LEN: usize = 4096;
 
 #[inline]
 fn adler32_chunk(s1: &mut u32, s2: &mut u32, p: &[u8]) {
