@@ -1,5 +1,5 @@
 use libdeflate::compress::{Compressor, FlushMode};
-use libdeflate::decompress::{DecompressResult, Decompressor, DecompressorState};
+use libdeflate::decompress::{Decompressor, DecompressorState};
 
 #[test]
 fn test_state_corruption_after_one_shot_decompress() {
@@ -28,7 +28,7 @@ fn test_state_corruption_after_one_shot_decompress() {
         );
     }
     let split_point = size / 2;
-    let (part1, part2) = compressed_data.split_at(split_point);
+    let (part1, _part2) = compressed_data.split_at(split_point);
 
     let mut decompressor = Decompressor::new();
     let mut output = vec![0u8; 20000];

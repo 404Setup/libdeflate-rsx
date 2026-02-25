@@ -345,103 +345,6 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         let mut v_s2_b = _mm256_setzero_si256();
         let mut v_s2_c = _mm256_setzero_si256();
         let mut v_s2_d = _mm256_setzero_si256();
-        let mut v_s2_e = _mm256_setzero_si256();
-        let mut v_s2_f = _mm256_setzero_si256();
-        let mut v_s2_g = _mm256_setzero_si256();
-        let mut v_s2_h = _mm256_setzero_si256();
-
-        if chunk_n >= 256 {
-            while chunk_n >= 256 {
-                // Parallelize processing of two 128-byte blocks to break dependency chains on v_s1.
-                // We compute SADs and other accumulators for both blocks independently, then
-                // combine the results for v_s1 and v_s1_acc.
-                // Optimization: Use 8 independent accumulators (v_s2_a..h) to increase ILP.
-                // Although this increases register pressure (using 14+ YMM registers), benchmarks show
-                // significant throughput gains (~20%) for large buffers (>2KB) on modern x86 CPUs,
-                // with negligible impact on smaller buffers.
-
-                // Block 1 (0..128)
-                let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
-                let data_b_1 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
-                let data_a_2 = _mm256_loadu_si256(ptr.add(64) as *const __m256i);
-                let data_b_2 = _mm256_loadu_si256(ptr.add(96) as *const __m256i);
-
-                let sad1_a = _mm256_sad_epu8(data_a_1, v_zero);
-                let sad2_a = _mm256_sad_epu8(data_b_1, v_zero);
-                let sad3_a = _mm256_sad_epu8(data_a_2, v_zero);
-                let sad4_a = _mm256_sad_epu8(data_b_2, v_zero);
-
-                let s12_a = _mm256_add_epi32(sad1_a, sad2_a);
-                let s34_a = _mm256_add_epi32(sad3_a, sad4_a);
-                let sum_sads_a = _mm256_add_epi32(s12_a, s34_a);
-
-                let s12_x2_a = _mm256_add_epi32(s12_a, s12_a);
-                let inc_part_a = _mm256_add_epi32(_mm256_add_epi32(s12_x2_a, sad1_a), sad3_a);
-                v_inc_acc_a = _mm256_add_epi32(v_inc_acc_a, inc_part_a);
-
-                let p1_a = _mm256_maddubs_epi16(data_a_1, weights);
-                let s_a_a = _mm256_madd_epi16(p1_a, ones_i16);
-                let p2_a = _mm256_maddubs_epi16(data_b_1, weights);
-                let s_b_a = _mm256_madd_epi16(p2_a, ones_i16);
-                v_s2_a = _mm256_add_epi32(v_s2_a, s_a_a);
-                v_s2_b = _mm256_add_epi32(v_s2_b, s_b_a);
-
-                let p3_a = _mm256_maddubs_epi16(data_a_2, weights);
-                let s_c_a = _mm256_madd_epi16(p3_a, ones_i16);
-                let p4_a = _mm256_maddubs_epi16(data_b_2, weights);
-                let s_d_a = _mm256_madd_epi16(p4_a, ones_i16);
-                v_s2_c = _mm256_add_epi32(v_s2_c, s_c_a);
-                v_s2_d = _mm256_add_epi32(v_s2_d, s_d_a);
-
-                // Block 2 (128..256)
-                let data_a_3 = _mm256_loadu_si256(ptr.add(128) as *const __m256i);
-                let data_b_3 = _mm256_loadu_si256(ptr.add(160) as *const __m256i);
-                let data_a_4 = _mm256_loadu_si256(ptr.add(192) as *const __m256i);
-                let data_b_4 = _mm256_loadu_si256(ptr.add(224) as *const __m256i);
-
-                let sad1_b = _mm256_sad_epu8(data_a_3, v_zero);
-                let sad2_b = _mm256_sad_epu8(data_b_3, v_zero);
-                let sad3_b = _mm256_sad_epu8(data_a_4, v_zero);
-                let sad4_b = _mm256_sad_epu8(data_b_4, v_zero);
-
-                let s12_b = _mm256_add_epi32(sad1_b, sad2_b);
-                let s34_b = _mm256_add_epi32(sad3_b, sad4_b);
-                let sum_sads_b = _mm256_add_epi32(s12_b, s34_b);
-
-                let s12_x2_b = _mm256_add_epi32(s12_b, s12_b);
-                let inc_part_b = _mm256_add_epi32(_mm256_add_epi32(s12_x2_b, sad1_b), sad3_b);
-                v_inc_acc_a = _mm256_add_epi32(v_inc_acc_a, inc_part_b);
-
-                let p1_b = _mm256_maddubs_epi16(data_a_3, weights);
-                let s_a_b = _mm256_madd_epi16(p1_b, ones_i16);
-                let p2_b = _mm256_maddubs_epi16(data_b_3, weights);
-                let s_b_b = _mm256_madd_epi16(p2_b, ones_i16);
-                v_s2_e = _mm256_add_epi32(v_s2_e, s_a_b);
-                v_s2_f = _mm256_add_epi32(v_s2_f, s_b_b);
-
-                let p3_b = _mm256_maddubs_epi16(data_a_4, weights);
-                let s_c_b = _mm256_madd_epi16(p3_b, ones_i16);
-                let p4_b = _mm256_maddubs_epi16(data_b_4, weights);
-                let s_d_b = _mm256_madd_epi16(p4_b, ones_i16);
-                v_s2_g = _mm256_add_epi32(v_s2_g, s_c_b);
-                v_s2_h = _mm256_add_epi32(v_s2_h, s_d_b);
-
-                // Update v_s1 and v_s1_acc using accumulated sums
-                // v_s1_acc accumulates v_s1 at the start of each 128-byte block.
-                // For Block 1: v_s1_acc += v_s1 (current)
-                // For Block 2: v_s1_acc += v_s1 + sum_sads_a
-                // Combined: v_s1_acc += 2*v_s1 + sum_sads_a
-                let v_s1_x2 = _mm256_add_epi32(v_s1, v_s1);
-                v_s1_acc = _mm256_add_epi32(v_s1_acc, _mm256_add_epi32(v_s1_x2, sum_sads_a));
-
-                // v_s1 accumulates sum_sads from both blocks
-                v_s1 = _mm256_add_epi32(v_s1, _mm256_add_epi32(sum_sads_a, sum_sads_b));
-
-                ptr = ptr.add(256);
-                chunk_n -= 256;
-                len -= 256;
-            }
-        }
 
         while chunk_n >= 128 {
             let data_a_1 = _mm256_loadu_si256(ptr as *const __m256i);
@@ -487,14 +390,8 @@ pub unsafe fn adler32_x86_avx2(adler: u32, p: &[u8]) -> u32 {
         }
 
         let mut v_s2 = _mm256_add_epi32(
-            _mm256_add_epi32(
-                _mm256_add_epi32(v_s2_a, v_s2_b),
-                _mm256_add_epi32(v_s2_c, v_s2_d),
-            ),
-            _mm256_add_epi32(
-                _mm256_add_epi32(v_s2_e, v_s2_f),
-                _mm256_add_epi32(v_s2_g, v_s2_h),
-            ),
+            _mm256_add_epi32(v_s2_a, v_s2_b),
+            _mm256_add_epi32(v_s2_c, v_s2_d),
         );
 
         let v_inc_acc = v_inc_acc_a;

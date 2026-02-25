@@ -592,6 +592,32 @@ unsafe fn decompress_offset_cycle3<const SHIFT: i32>(
     let mut v1 = v1;
 
     let mut copied = 16;
+    // Optimization: Unroll loop to process 96 bytes per iteration (6 vectors).
+    // This reduces loop overhead and allows better pipelining of the alignr dependency chains
+    // compared to the original 48-byte stride.
+    while copied + 96 <= length {
+        let next_v0 = _mm_alignr_epi8::<SHIFT>(v1, v0);
+        let next_v1 = _mm_alignr_epi8::<SHIFT>(v2, v1);
+        let next_v2 = _mm_alignr_epi8::<SHIFT>(next_v0, v2);
+
+        let next_v3 = _mm_alignr_epi8::<SHIFT>(next_v1, next_v0);
+        let next_v4 = _mm_alignr_epi8::<SHIFT>(next_v2, next_v1);
+        let next_v5 = _mm_alignr_epi8::<SHIFT>(next_v3, next_v2);
+
+        _mm_storeu_si128(out_next.add(copied) as *mut __m128i, v1);
+        _mm_storeu_si128(out_next.add(copied + 16) as *mut __m128i, v2);
+        _mm_storeu_si128(out_next.add(copied + 32) as *mut __m128i, next_v0);
+
+        _mm_storeu_si128(out_next.add(copied + 48) as *mut __m128i, next_v1);
+        _mm_storeu_si128(out_next.add(copied + 64) as *mut __m128i, next_v2);
+        _mm_storeu_si128(out_next.add(copied + 80) as *mut __m128i, next_v3);
+
+        v0 = next_v3;
+        v1 = next_v4;
+        v2 = next_v5;
+        copied += 96;
+    }
+
     while copied + 48 <= length {
         let next_v0 = _mm_alignr_epi8::<SHIFT>(v1, v0);
         let next_v1 = _mm_alignr_epi8::<SHIFT>(v2, v1);
