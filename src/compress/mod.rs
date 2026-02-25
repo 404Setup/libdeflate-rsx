@@ -268,13 +268,6 @@ impl Sequence {
     }
 }
 
-#[derive(Clone, Copy)]
-struct DPNode {
-    cost: u32,
-    length: u16,
-    offset: u16,
-}
-
 const NUM_LITERAL_OBSERVATION_TYPES: usize = 8;
 const NUM_MATCH_OBSERVATION_TYPES: usize = 2;
 const NUM_OFFSET_OBSERVATION_TYPES: usize = 4;
