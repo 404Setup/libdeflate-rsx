@@ -1596,12 +1596,13 @@ impl Compressor {
                 let (len, offset) =
                     mf.find_match(input, in_idx, self.max_search_depth, self.nice_match_length);
                 if len >= 3 {
-                    self.split_stats.observe_match(len, offset);
+                    let off_slot = self.get_offset_slot(offset);
+                    self.split_stats.observe_match_with_slot(len, off_slot);
                     self.sequences.push(Sequence::new(
                         litrunlen,
                         len as u16,
                         offset as u16,
-                        self.get_offset_slot(offset) as u8,
+                        off_slot as u8,
                     ));
                     litrunlen = 0;
                     mf.skip_positions(

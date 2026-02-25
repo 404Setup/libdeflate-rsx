@@ -2151,9 +2151,37 @@ fn bench_compress_level10_large(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_compress_level6_large(c: &mut Criterion) {
+    let size = 1024 * 1024; // 1MB
+    // Repeating pattern to ensure many matches, triggering the greedy match logic
+    let pattern = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut data = Vec::with_capacity(size);
+    while data.len() < size {
+        data.extend_from_slice(pattern);
+    }
+    data.truncate(size);
+
+    let mut group = c.benchmark_group("Compress Level 6 Large");
+    group.throughput(Throughput::Bytes(size as u64));
+
+    group.bench_with_input("libdeflate-rs level 6", &size, |b, &_size| {
+        let mut compressor = Compressor::new(6).unwrap();
+        let bound = compressor.deflate_compress_bound(size);
+        let mut out_buf = vec![0u8; bound];
+        b.iter(|| {
+            compressor
+                .compress_deflate_into(&data, &mut out_buf)
+                .unwrap_or(0)
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_compress_level10_large,
+    bench_compress_level6_large,
     bench_crc32_large,
     bench_bitstream_micro,
     bench_compress_micro,
