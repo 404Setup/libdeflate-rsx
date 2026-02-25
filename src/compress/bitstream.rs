@@ -69,6 +69,50 @@ impl<'a> Bitstream<'a> {
         }
     }
 
+    /// Writes up to 60 bits assuming sufficient buffer space (at least 8 bytes at current `out_idx`).
+    ///
+    /// # Safety
+    ///
+    /// * `count` must be > 0 and <= 60.
+    /// * `bits` must not have any bits set above `count`.
+    /// * `self.out_idx + 8 <= self.output.len()`.
+    #[inline(always)]
+    pub unsafe fn write_bits_unchecked_fast_64(&mut self, bits: u64, count: u32) {
+        debug_assert!(count > 0);
+        debug_assert!(count <= 60);
+        debug_assert!(self.out_idx + 8 <= self.output.len());
+
+        let bitcount = self.bitcount;
+        let new_bitcount = bitcount + count;
+
+        if new_bitcount >= 64 {
+            let bitbuf_low = self.bitbuf | (bits << bitcount);
+            let bitbuf_high = bits >> (64 - bitcount);
+
+            std::ptr::write_unaligned(
+                self.output.as_mut_ptr().add(self.out_idx) as *mut u64,
+                bitbuf_low.to_le(),
+            );
+            self.out_idx += 8;
+            self.bitbuf = bitbuf_high;
+            self.bitcount = new_bitcount - 64;
+        } else {
+            let bitbuf = self.bitbuf | (bits << bitcount);
+            if new_bitcount >= 32 {
+                std::ptr::write_unaligned(
+                    self.output.as_mut_ptr().add(self.out_idx) as *mut u64,
+                    bitbuf.to_le(),
+                );
+                self.out_idx += 4;
+                self.bitbuf = bitbuf >> 32;
+                self.bitcount = new_bitcount - 32;
+            } else {
+                self.bitbuf = bitbuf;
+                self.bitcount = new_bitcount;
+            }
+        }
+    }
+
     /// Writes bits without checking count or masking bits.
     ///
     /// # Safety

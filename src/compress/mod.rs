@@ -1388,63 +1388,8 @@ impl Compressor {
         if !self.write_dynamic_huffman_header_impl(bs) {
             return false;
         }
-        let mut in_pos = start_pos;
-        for seq in &self.sequences {
-            if seq.litrunlen > 0 {
-                // Check if we have enough space to write all literals in this run without bounds checks.
-                // Heuristic: Each literal expands to at most 15 bits. Writing flushes every 32 bits (4 bytes).
-                // Max expansion is roughly 15/8 ~= 1.875 bytes per literal. 2 bytes is a safe upper bound.
-                // We add 16 bytes margin for the last flush (8 bytes) and safety.
-                if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
-                    let mut lit_remain = seq.litrunlen as usize;
-                    while lit_remain >= 4 {
-                        // SAFETY: We verified sufficient buffer space above.
-                        // `write_literals_2` writes at most 30 bits and may flush 4 bytes.
-                        // We do this twice, so max 60 bits + flush overhead.
-                        // The loop precondition checks for space.
-                        unsafe {
-                            self.write_literals_2(bs, input[in_pos], input[in_pos + 1]);
-                            self.write_literals_2(bs, input[in_pos + 2], input[in_pos + 3]);
-                        }
-                        in_pos += 4;
-                        lit_remain -= 4;
-                    }
-                    while lit_remain >= 2 {
-                        // SAFETY: We verified sufficient buffer space above.
-                        // `write_literals_2` writes at most 30 bits and may flush 4 bytes.
-                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
-                        in_pos += 2;
-                        lit_remain -= 2;
-                    }
-                    if lit_remain > 0 {
-                        // SAFETY: We verified sufficient buffer space above.
-                        // `write_literal_fast` writes at most 15 bits and may flush 4 bytes.
-                        // The buffer margin guarantees `out_idx + 8 <= output.len()` for the `write_bits_unchecked_fast` call.
-                        unsafe { self.write_literal_fast(bs, input[in_pos]) };
-                        in_pos += 1;
-                    }
-                } else {
-                    for _ in 0..seq.litrunlen {
-                        if !self.write_literal(bs, input[in_pos]) {
-                            return false;
-                        }
-                        in_pos += 1;
-                    }
-                }
-            }
-            let len = seq.len();
-            if len >= 3 {
-                let offset = seq.offset as usize;
-                let off_slot = seq.off_slot();
-                if bs.out_idx + 16 < bs.output.len() {
-                    unsafe {
-                        self.write_match_fast(bs, len as usize, offset, off_slot);
-                    }
-                } else if !self.write_match(bs, len as usize, offset, off_slot) {
-                    return false;
-                }
-                in_pos += len as usize;
-            }
+        if !self.write_sequences_to_bitstream(bs, input, start_pos) {
+            return false;
         }
         if !self.write_sym(bs, 256) {
             return false;
@@ -1629,50 +1574,8 @@ impl Compressor {
             return 0;
         }
 
-        let mut in_pos = start_pos;
-        for seq in &self.sequences {
-            if seq.litrunlen > 0 {
-                if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
-                    let mut lit_remain = seq.litrunlen as usize;
-                    while lit_remain >= 4 {
-                        unsafe {
-                            self.write_literals_2(bs, input[in_pos], input[in_pos + 1]);
-                            self.write_literals_2(bs, input[in_pos + 2], input[in_pos + 3]);
-                        }
-                        in_pos += 4;
-                        lit_remain -= 4;
-                    }
-                    while lit_remain >= 2 {
-                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
-                        in_pos += 2;
-                        lit_remain -= 2;
-                    }
-                    if lit_remain > 0 {
-                        unsafe { self.write_literal_fast(bs, input[in_pos]) };
-                        in_pos += 1;
-                    }
-                } else {
-                    for _ in 0..seq.litrunlen {
-                        if !self.write_literal(bs, input[in_pos]) {
-                            return 0;
-                        }
-                        in_pos += 1;
-                    }
-                }
-            }
-            let len = seq.len();
-            if len >= 3 {
-                let offset = seq.offset as usize;
-                let off_slot = seq.off_slot();
-                if bs.out_idx + 16 < bs.output.len() {
-                    unsafe {
-                        self.write_match_fast(bs, len as usize, offset, off_slot);
-                    }
-                } else if !self.write_match(bs, len as usize, offset, off_slot) {
-                    return 0;
-                }
-                in_pos += len as usize;
-            }
+        if !self.write_sequences_to_bitstream(bs, input, start_pos) {
+            return 0;
         }
         if !self.write_sym(bs, 256) {
             return 0;
@@ -2010,6 +1913,103 @@ impl Compressor {
         let len2 = (entry2 >> 32) as u32;
 
         bs.write_bits_unchecked_fast(code1 | (code2 << len1), len1 + len2);
+    }
+
+    #[inline(always)]
+    unsafe fn write_literals_4(
+        &self,
+        bs: &mut Bitstream,
+        lit1: u8,
+        lit2: u8,
+        lit3: u8,
+        lit4: u8,
+    ) {
+        let entry1 = *self.litlen_table.get_unchecked(lit1 as usize);
+        let entry2 = *self.litlen_table.get_unchecked(lit2 as usize);
+        let entry3 = *self.litlen_table.get_unchecked(lit3 as usize);
+        let entry4 = *self.litlen_table.get_unchecked(lit4 as usize);
+
+        let code1 = entry1 as u32 as u64;
+        let len1 = (entry1 >> 32) as u32;
+
+        let code2 = entry2 as u32 as u64;
+        let len2 = (entry2 >> 32) as u32;
+
+        let code3 = entry3 as u32 as u64;
+        let len3 = (entry3 >> 32) as u32;
+
+        let code4 = entry4 as u32 as u64;
+        let len4 = (entry4 >> 32) as u32;
+
+        let len12 = len1 + len2;
+        let len123 = len12 + len3;
+
+        let combined_code = code1 | (code2 << len1) | (code3 << len12) | (code4 << len123);
+        let combined_len = len123 + len4;
+
+        bs.write_bits_unchecked_fast_64(combined_code, combined_len);
+    }
+
+    fn write_sequences_to_bitstream(
+        &self,
+        bs: &mut Bitstream,
+        input: &[u8],
+        start_pos: usize,
+    ) -> bool {
+        let mut in_pos = start_pos;
+        for seq in &self.sequences {
+            if seq.litrunlen > 0 {
+                // Check if we have enough space to write all literals in this run without bounds checks.
+                // Heuristic: Each literal expands to at most 15 bits. Writing flushes every 32/64 bits.
+                // We add 16 bytes margin for safety.
+                if bs.out_idx + 16 + (seq.litrunlen as usize * 2) < bs.output.len() {
+                    let mut lit_remain = seq.litrunlen as usize;
+                    while lit_remain >= 4 {
+                        unsafe {
+                            self.write_literals_4(
+                                bs,
+                                input[in_pos],
+                                input[in_pos + 1],
+                                input[in_pos + 2],
+                                input[in_pos + 3],
+                            );
+                        }
+                        in_pos += 4;
+                        lit_remain -= 4;
+                    }
+                    while lit_remain >= 2 {
+                        unsafe { self.write_literals_2(bs, input[in_pos], input[in_pos + 1]) };
+                        in_pos += 2;
+                        lit_remain -= 2;
+                    }
+                    if lit_remain > 0 {
+                        unsafe { self.write_literal_fast(bs, input[in_pos]) };
+                        in_pos += 1;
+                    }
+                } else {
+                    for _ in 0..seq.litrunlen {
+                        if !self.write_literal(bs, input[in_pos]) {
+                            return false;
+                        }
+                        in_pos += 1;
+                    }
+                }
+            }
+            let len = seq.len();
+            if len >= 3 {
+                let offset = seq.offset as usize;
+                let off_slot = seq.off_slot();
+                if bs.out_idx + 16 < bs.output.len() {
+                    unsafe {
+                        self.write_match_fast(bs, len as usize, offset, off_slot);
+                    }
+                } else if !self.write_match(bs, len as usize, offset, off_slot) {
+                    return false;
+                }
+                in_pos += len as usize;
+            }
+        }
+        true
     }
 
     fn write_literal(&self, bs: &mut Bitstream, lit: u8) -> bool {
